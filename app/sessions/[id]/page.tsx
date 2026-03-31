@@ -2,7 +2,7 @@
 
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, type Session } from "@/lib/api";
+import { api, type Session, type CandidateFeedback } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -39,6 +39,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   const [files, setFiles] = useState<File[]>([]);
   const [includeText, setIncludeText] = useState("");
   const [excludeText, setExcludeText] = useState("");
+  const [candidateFeedback, setCandidateFeedback] = useState<CandidateFeedback[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
@@ -83,9 +84,10 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   }
 
   function handleRefine() {
-    run(() => api.refinePreview(id, includeText, excludeText, apiKey || undefined)).then(() => {
+    run(() => api.refinePreview(id, includeText, excludeText, candidateFeedback, apiKey || undefined)).then(() => {
       setIncludeText("");
       setExcludeText("");
+      setCandidateFeedback([]);
     });
   }
 
@@ -259,7 +261,10 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
             )}
 
             {/* candidate results */}
-            <FieldMatchTable results={session.preview_field_results} />
+            <FieldMatchTable 
+              results={session.preview_field_results} 
+              onFeedback={(fb) => setCandidateFeedback(prev => [...prev.filter(f => f.file_name !== fb.file_name), fb])} 
+            />
 
             <Separator className="bg-zinc-800" />
 
@@ -294,7 +299,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
               </div>
 
               {/* pending params preview */}
-              {(includeText.trim() || excludeText.trim()) && (
+              {(includeText.trim() || excludeText.trim() || candidateFeedback.length > 0) && (
                 <div className="flex flex-wrap gap-2 px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg">
                   <span className="text-[10px] text-zinc-500 uppercase tracking-wide self-center">Will add:</span>
                   {includeText.trim() && (
@@ -307,6 +312,11 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
                       − {excludeText.trim()}
                     </span>
                   )}
+                  {candidateFeedback.map((fb, idx) => (
+                    <span key={idx} className="text-xs bg-blue-950/70 border border-blue-800/50 text-blue-300 px-2 py-0.5 rounded-full truncate max-w-[200px]" title={fb.reason}>
+                      👤 Override: {fb.file_name} ({fb.action})
+                    </span>
+                  ))}
                 </div>
               )}
             </div>

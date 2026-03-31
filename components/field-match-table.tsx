@@ -1,7 +1,9 @@
 "use client";
 
-import { type CandidateResult, type PreviewResults, type P0Match } from "@/lib/api";
+import { type CandidateResult, type PreviewResults, type P0Match, type CandidateFeedback } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { useState } from "react";
 
 // ── constants ─────────────────────────────────────────────────────────────────
@@ -172,10 +174,22 @@ function P0Bar({ m, index }: { m: P0Match | string; index: number }) {
 
 // ── candidate card ────────────────────────────────────────────────────────────
 
-function CandidateCard({ c, rank }: { c: CandidateResult; rank: number }) {
+function CandidateCard({ c, rank, onFeedback }: { c: CandidateResult; rank: number; onFeedback?: (fb: CandidateFeedback) => void }) {
   const [open, setOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackAction, setFeedbackAction] = useState("should_pass");
+  const [feedbackReason, setFeedbackReason] = useState("");
+
   const style = CLASS_STYLE[c.classification] ?? "bg-zinc-800 text-zinc-200 border border-zinc-700";
   const hasFieldMatches = c.field_matches && c.field_matches.length > 0;
+
+  function handleSubmitFeedback(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!onFeedback || !feedbackReason.trim()) return;
+    onFeedback({ file_name: c.candidate_name, action: feedbackAction, reason: feedbackReason });
+    setFeedbackOpen(false);
+    setFeedbackReason("");
+  }
 
   return (
     <div className="border border-zinc-800 rounded-xl overflow-hidden shadow-sm">
@@ -204,6 +218,16 @@ function CandidateCard({ c, rank }: { c: CandidateResult; rank: number }) {
               Baseline fail
             </span>
           )}
+          {onFeedback && (
+            <div className="relative isolate z-10">
+              <span 
+                onClick={(e) => { e.stopPropagation(); setFeedbackOpen(v => !v); }}
+                className="text-[10px] uppercase font-semibold text-zinc-500 hover:text-blue-400 hover:underline px-2 py-1 cursor-pointer shrink-0"
+              >
+                Disagree?
+              </span>
+            </div>
+          )}
         </div>
 
         {/* right: score ring + p0 score + toggle */}
@@ -220,6 +244,39 @@ function CandidateCard({ c, rank }: { c: CandidateResult; rank: number }) {
       {/* expanded body */}
       {open && (
         <div className="bg-zinc-950/80 px-4 py-4 space-y-5 border-t border-zinc-800/60">
+
+          {/* Feedback Form UI */}
+          {feedbackOpen && (
+            <div className="bg-blue-950/20 border border-blue-900/50 rounded-lg p-4 space-y-4 shadow-inner">
+              <div>
+                <p className="text-xs font-semibold text-blue-300 mb-2">Manual Intervention Required</p>
+                <div className="flex gap-2">
+                  <select 
+                    title="action"
+                    className="bg-zinc-950 border border-zinc-800 text-zinc-300 text-xs rounded-md px-2 py-1.5 focus:border-blue-500 focus:outline-none"
+                    value={feedbackAction}
+                    onChange={(e) => setFeedbackAction(e.target.value)}
+                  >
+                    <option value="should_pass">This candidate should PASS (they have the required skills)</option>
+                    <option value="should_fail">This candidate should FAIL (they have a red flag or lack skills)</option>
+                    <option value="p0_booster">This candidate deserves a P0 Boost</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <Textarea
+                  placeholder="Explain exactly why. E.g., 'They have 5 years of startup experience which is awesome.' This feedback directly trains the AI's strict baseline rubric."
+                  className="bg-zinc-950 border-zinc-800 text-zinc-300 text-xs min-h-[60px]"
+                  value={feedbackReason}
+                  onChange={(e) => setFeedbackReason(e.target.value)}
+                />
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="ghost" className="h-7 text-[10px] text-zinc-500 hover:text-zinc-300" onClick={() => setFeedbackOpen(false)}>Cancel</Button>
+                <Button className="h-7 text-[10px] bg-blue-600 hover:bg-blue-500 text-white" disabled={!feedbackReason.trim()} onClick={handleSubmitFeedback}>Add to Criteria Loop</Button>
+              </div>
+            </div>
+          )}
 
           {/* reasoning */}
           {c.reasoning && (
@@ -288,7 +345,7 @@ function CandidateCard({ c, rank }: { c: CandidateResult; rank: number }) {
 
 // ── main export ───────────────────────────────────────────────────────────────
 
-export function FieldMatchTable({ results }: { results: PreviewResults }) {
+export function FieldMatchTable({ results, onFeedback }: { results: PreviewResults; onFeedback?: (fb: CandidateFeedback) => void }) {
   const { summary, results: candidates } = results;
 
   if (!candidates || candidates.length === 0) {
@@ -315,7 +372,7 @@ export function FieldMatchTable({ results }: { results: PreviewResults }) {
       {/* ranked candidate list */}
       <div className="space-y-2">
         {candidates.map((c, i) => (
-          <CandidateCard key={i} c={c} rank={i + 1} />
+          <CandidateCard key={i} c={c} rank={i + 1} onFeedback={onFeedback} />
         ))}
       </div>
     </div>

@@ -40,6 +40,12 @@ export interface PreviewResults {
   summary: { total_evaluated: number; p0_count: number; baseline_count: number; reject_count: number };
 }
 
+export interface CandidateFeedback {
+  file_name: string;
+  action: string;
+  reason: string;
+}
+
 export interface Session {
   id: string;
   status: SessionStatus;
@@ -116,10 +122,10 @@ export const api = {
       body: JSON.stringify({ api_key: apiKey }),
     }),
 
-  refinePreview: (id: string, include: string, exclude: string, apiKey?: string) =>
+  refinePreview: (id: string, include: string, exclude: string, candidate_feedback: CandidateFeedback[] = [], apiKey?: string) =>
     req<Session>(`/api/sessions/${id}/preview/refine`, {
       method: "POST",
-      body: JSON.stringify({ include, exclude, api_key: apiKey }),
+      body: JSON.stringify({ include, exclude, candidate_feedback, api_key: apiKey }),
     }),
 
   accept: (id: string, apiKey?: string) =>
