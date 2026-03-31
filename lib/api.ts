@@ -63,7 +63,15 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error((err as { detail?: string }).detail ?? "Request failed");
+    let msg = "Request failed";
+    if (typeof err.detail === "string") {
+      msg = err.detail;
+    } else if (Array.isArray(err.detail)) {
+      msg = err.detail.map((d: any) => d.msg || JSON.stringify(d)).join(", ");
+    } else if (err.message) {
+      msg = err.message;
+    }
+    throw new Error(msg);
   }
   return res.json() as Promise<T>;
 }
@@ -92,7 +100,11 @@ export const api = {
     }).then(async (r) => {
       if (!r.ok) {
         const err = await r.json().catch(() => ({ detail: r.statusText }));
-        throw new Error((err as { detail?: string }).detail ?? "Upload failed");
+        let msg = "Upload failed";
+        if (typeof err.detail === "string") msg = err.detail;
+        else if (Array.isArray(err.detail)) msg = err.detail.map((d: any) => d.msg || JSON.stringify(d)).join(", ");
+        else if (err.message) msg = err.message;
+        throw new Error(msg);
       }
       return r.json() as Promise<Session>;
     });
