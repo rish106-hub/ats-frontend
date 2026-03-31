@@ -91,6 +91,10 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
     });
   }
 
+  function handleReload() {
+    run(() => api.reloadPreview(id, apiKey || undefined));
+  }
+
   function handleAccept() {
     run(() => api.accept(id, apiKey || undefined));
   }
@@ -321,13 +325,21 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
               )}
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex gap-3 mt-6">
               <Button
                 onClick={handleRefine}
                 disabled={busy}
                 className="bg-white text-zinc-950 hover:bg-zinc-200"
               >
                 {busy ? "Re-evaluating…" : "Re-evaluate with updated parameters"}
+              </Button>
+              <Button
+                onClick={handleReload}
+                disabled={busy}
+                variant="outline"
+                className="border-zinc-700 text-zinc-400 hover:bg-zinc-800"
+              >
+                {busy ? "Loading…" : "Load Different Resumes"}
               </Button>
               <Button
                 onClick={handleAccept}

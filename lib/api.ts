@@ -128,6 +128,12 @@ export const api = {
       body: JSON.stringify({ include, exclude, candidate_feedback, api_key: apiKey }),
     }),
 
+  reloadPreview: (id: string, apiKey?: string) =>
+    req<Session>(`/api/sessions/${id}/preview/reload`, {
+      method: "POST",
+      body: JSON.stringify({ api_key: apiKey }),
+    }),
+
   accept: (id: string, apiKey?: string) =>
     req<Session>(`/api/sessions/${id}/accept`, {
       method: "POST",
