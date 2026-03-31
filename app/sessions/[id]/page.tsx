@@ -205,68 +205,110 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
         {/* ── step 3: preview loop ── */}
         {step === "preview" && session.preview_field_results && (
           <div className="space-y-6">
+            {/* iteration header */}
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold text-zinc-100">
-                Preview — Iteration {session.preview_iteration_count}
+                Preview
+                <span className="ml-2 text-sm font-mono bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-full">
+                  Iteration {session.preview_iteration_count}
+                </span>
               </h2>
-              {config && (
-                <p className="text-zinc-500 text-sm max-w-lg text-right">
-                  {String((config as Record<string,unknown>).screening_summary ?? "")}
-                </p>
-              )}
             </div>
 
-            <FieldMatchTable results={session.preview_field_results} />
-
-            {/* synthesis notes */}
-            {config && (config as Record<string, string>).synthesis_notes ? (
-              <div className="text-xs text-zinc-500 border-l-2 border-zinc-700 pl-3">
-                {(config as Record<string, string>).synthesis_notes}
+            {/* synthesis notes — shown prominently when criteria changed */}
+            {config && (config as Record<string, string>).synthesis_notes && (
+              <div className="bg-blue-950/30 border border-blue-800/40 rounded-xl px-4 py-3 space-y-1">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-400">
+                  🔄 What changed this iteration
+                </p>
+                <p className="text-sm text-blue-200 leading-relaxed">
+                  {(config as Record<string, string>).synthesis_notes}
+                </p>
               </div>
-            ) : null}
+            )}
 
-            {/* param history */}
+            {/* active rubric panel */}
+            <ActiveRubricPanel config={config} />
+
+            {/* param history — always visible */}
             {session.extra_params_history.length > 0 && (
-              <details className="group">
-                <summary className="text-xs text-zinc-500 cursor-pointer hover:text-zinc-300">
-                  Parameters added so far ({session.extra_params_history.length})
-                </summary>
-                <div className="mt-2 space-y-1 pl-3">
+              <div className="space-y-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                  📋 Parameters Added So Far
+                </p>
+                <div className="space-y-1.5">
                   {session.extra_params_history.map((p, i) => (
-                    <div key={i} className="text-xs text-zinc-500">
-                      <span className="text-zinc-400">Iter {p.iteration + 1}:</span>
-                      {p.include && <span className="text-green-500 ml-2">+ {p.include}</span>}
-                      {p.exclude && <span className="text-red-500 ml-2">− {p.exclude}</span>}
+                    <div key={i} className="flex items-start gap-3 text-xs rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2">
+                      <span className="text-zinc-600 font-mono shrink-0">Iter {(p.iteration ?? i) + 1}</span>
+                      <div className="flex flex-wrap gap-2">
+                        {p.include && (
+                          <span className="flex items-center gap-1 bg-green-950/50 border border-green-800/50 text-green-300 px-2 py-0.5 rounded-full">
+                            <span className="text-green-500">+</span> {p.include}
+                          </span>
+                        )}
+                        {p.exclude && (
+                          <span className="flex items-center gap-1 bg-red-950/50 border border-red-800/50 text-red-300 px-2 py-0.5 rounded-full">
+                            <span className="text-red-500">−</span> {p.exclude}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
-              </details>
+              </div>
             )}
+
+            {/* candidate results */}
+            <FieldMatchTable results={session.preview_field_results} />
 
             <Separator className="bg-zinc-800" />
 
             {/* refine inputs */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs text-zinc-400 mb-1 block">Also include candidates who…</label>
-                <Textarea
-                  placeholder="e.g. 2+ years B2B SaaS, led a team"
-                  value={includeText}
-                  onChange={(e) => setIncludeText(e.target.value)}
-                  rows={3}
-                  className="bg-zinc-950 border-zinc-700 text-zinc-200 text-sm resize-none"
-                />
+            <div className="space-y-3">
+              <p className="text-xs text-zinc-400 font-medium">Refine criteria for next iteration:</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs text-green-600 mb-1.5 flex items-center gap-1">
+                    <span>➕</span> Also include candidates who…
+                  </label>
+                  <Textarea
+                    placeholder="e.g. 2+ years B2B SaaS, led a team"
+                    value={includeText}
+                    onChange={(e) => setIncludeText(e.target.value)}
+                    rows={3}
+                    className="bg-zinc-950 border-green-900/50 focus:border-green-700 text-zinc-200 text-sm resize-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-red-500 mb-1.5 flex items-center gap-1">
+                    <span>➖</span> Exclude candidates who…
+                  </label>
+                  <Textarea
+                    placeholder="e.g. only consulting background, no product experience"
+                    value={excludeText}
+                    onChange={(e) => setExcludeText(e.target.value)}
+                    rows={3}
+                    className="bg-zinc-950 border-red-900/50 focus:border-red-700 text-zinc-200 text-sm resize-none"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="text-xs text-zinc-400 mb-1 block">Exclude candidates who…</label>
-                <Textarea
-                  placeholder="e.g. only consulting background, no product experience"
-                  value={excludeText}
-                  onChange={(e) => setExcludeText(e.target.value)}
-                  rows={3}
-                  className="bg-zinc-950 border-zinc-700 text-zinc-200 text-sm resize-none"
-                />
-              </div>
+
+              {/* pending params preview */}
+              {(includeText.trim() || excludeText.trim()) && (
+                <div className="flex flex-wrap gap-2 px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg">
+                  <span className="text-[10px] text-zinc-500 uppercase tracking-wide self-center">Will add:</span>
+                  {includeText.trim() && (
+                    <span className="text-xs bg-green-950/70 border border-green-800/50 text-green-300 px-2 py-0.5 rounded-full">
+                      + {includeText.trim()}
+                    </span>
+                  )}
+                  {excludeText.trim() && (
+                    <span className="text-xs bg-red-950/70 border border-red-800/50 text-red-300 px-2 py-0.5 rounded-full">
+                      − {excludeText.trim()}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="flex gap-3">
@@ -361,17 +403,161 @@ function CriteriaSummary({ jd }: { jd: Record<string, unknown> }) {
   const baseline = (jd.baseline as Record<string, unknown>) ?? {};
   const p0 = (jd.p0_signals as Array<Record<string, string>>) ?? [];
   const skills = (baseline.skills_required as string[]) ?? [];
+  const expYears = baseline.experience_years_min as number | undefined;
+  const domain = baseline.domain_required as string | undefined;
+
+  // Build the human-readable summary sentence
+  const parts: string[] = [];
+  if (skills.length) parts.push(skills.slice(0, 4).join(", ") + (skills.length > 4 ? ` and ${skills.length - 4} more` : ""));
+  const expPart = expYears ? `${expYears}+ years of experience` : "";
+  const domainPart = domain && domain.toLowerCase() !== "not specified" ? `in ${domain}` : "";
+  if (expPart || domainPart) parts.push([expPart, domainPart].filter(Boolean).join(" "));
+  const p0Part = p0.length ? p0.slice(0, 3).map(p => p.signal).join(", ") : "";
+
+  const summary = [
+    parts.length ? `Candidate must possess ${parts.join(", ")}` : null,
+    p0Part ? `and demonstrate ${p0Part}` : null,
+  ].filter(Boolean).join(" ") + (parts.length || p0Part ? "." : "");
 
   return (
-    <div className="grid grid-cols-2 gap-4 p-4 bg-zinc-950 rounded-lg border border-zinc-800 text-xs">
-      <div>
-        <p className="text-zinc-400 font-medium mb-2">Baseline skills</p>
-        {skills.length ? skills.map((s, i) => <p key={i} className="text-zinc-300">• {s}</p>) : <p className="text-zinc-600">None extracted</p>}
+    <div className="space-y-3">
+      {summary && (
+        <p className="text-sm text-zinc-200 leading-relaxed bg-zinc-900 border border-zinc-700/60 rounded-xl px-4 py-3">
+          <span className="text-zinc-500 font-semibold">In short: </span>
+          {summary}
+        </p>
+      )}
+      <div className="grid grid-cols-2 gap-4 p-4 bg-zinc-950 rounded-lg border border-zinc-800 text-xs">
+        <div>
+          <p className="text-zinc-400 font-medium mb-2">Baseline skills</p>
+          {skills.length ? skills.map((s, i) => <p key={i} className="text-zinc-300">• {s}</p>) : <p className="text-zinc-600">None extracted</p>}
+        </div>
+        <div>
+          <p className="text-zinc-400 font-medium mb-2">P0 signals</p>
+          {p0.length ? p0.map((p, i) => <p key={i} className="text-zinc-300">• {p.signal}</p>) : <p className="text-zinc-600">None extracted</p>}
+        </div>
       </div>
-      <div>
-        <p className="text-zinc-400 font-medium mb-2">P0 signals</p>
-        {p0.length ? p0.map((p, i) => <p key={i} className="text-zinc-300">• {p.signal}</p>) : <p className="text-zinc-600">None extracted</p>}
-      </div>
+    </div>
+  );
+}
+
+// ── ActiveRubricPanel ─────────────────────────────────────────────────────────
+// Shows the current synthesized rubric (baseline checks, P0 weights, red flags)
+// so the user can see exactly which criteria are now active.
+
+function ActiveRubricPanel({ config }: { config: Record<string, unknown> | null }) {
+  const [open, setOpen] = useState(false);
+  if (!config) return null;
+
+  const rubric = (config.scoring_rubric as Record<string, unknown>) ?? {};
+  const baselineChecks = (rubric.baseline_checks as Array<{ check: string; resume_field: string; reject_if_missing: boolean }>) ?? [];
+  const p0Weights = (rubric.p0_weights as Array<{ signal: string; weight: number; resume_field: string }>) ?? [];
+  const redFlagChecks = (rubric.red_flag_checks as Array<{ check: string; resume_field: string }>) ?? [];
+  const screeningSummary = config.screening_summary as string | undefined;
+  const finalPrompt = config.final_evaluation_prompt as string | undefined;
+
+  const totalItems = baselineChecks.length + p0Weights.length + redFlagChecks.length;
+  if (totalItems === 0) return null;
+
+
+  return (
+    <div className="border border-zinc-800 rounded-xl overflow-hidden">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 bg-zinc-900 hover:bg-zinc-800/80 transition-colors text-left"
+      >
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-semibold text-zinc-200">⚖️ Active Evaluation Criteria</span>
+          <span className="text-[10px] font-mono bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-full">
+            {baselineChecks.length} baseline · {p0Weights.length} P0 · {redFlagChecks.length} flags
+          </span>
+        </div>
+        <span className="text-zinc-600 text-xs">{open ? "▲" : "▼"}</span>
+      </button>
+
+      {open && (
+        <div className="px-4 py-4 bg-zinc-950/80 border-t border-zinc-800/60 space-y-5">
+          {screeningSummary && (
+            <p className="text-xs text-zinc-400 italic border-l-2 border-zinc-700 pl-3 leading-relaxed">
+              {screeningSummary}
+            </p>
+          )}
+
+          {/* Full evaluation prompt — users can verify it reflects their include/exclude additions */}
+          {finalPrompt && (
+            <details className="group">
+              <summary className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 cursor-pointer hover:text-zinc-300 select-none">
+                📝 Full Evaluation Prompt <span className="text-zinc-600 font-normal normal-case">(click to verify it includes your parameters)</span>
+              </summary>
+              <div className="mt-2 bg-zinc-900 border border-zinc-700 rounded-lg p-3 max-h-48 overflow-y-auto">
+                <p className="text-xs text-zinc-300 leading-relaxed whitespace-pre-wrap">{finalPrompt}</p>
+              </div>
+            </details>
+          )}
+
+          {baselineChecks.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                ✅ Baseline Checks <span className="text-red-500 font-normal">(fail = auto reject)</span>
+              </p>
+              <div className="space-y-1.5">
+                {baselineChecks.map((c, i) => (
+                  <div key={i} className="flex items-start gap-3 text-xs bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 py-2">
+                    <span className="text-red-400 shrink-0 mt-0.5">⛔</span>
+                    <div className="min-w-0 space-y-0.5">
+                      <p className="text-zinc-200 leading-relaxed">{c.check}</p>
+                      <p className="text-zinc-600">Field: <span className="font-mono text-zinc-500">{c.resume_field}</span></p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {p0Weights.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                🎯 P0 Signal Weights <span className="text-zinc-600 font-normal">(higher = more important)</span>
+              </p>
+              <div className="space-y-2">
+                {p0Weights.map((w, i) => (
+                  <div key={i} className="flex items-center gap-3 text-xs">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-zinc-300 truncate">{w.signal}</p>
+                      <p className="text-zinc-600 font-mono">{w.resume_field}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="w-20 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                        <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${Math.min(w.weight, 100)}%` }} />
+                      </div>
+                      <span className="text-emerald-400 font-mono font-bold w-8 text-right">{w.weight}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {redFlagChecks.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                🚩 Red Flag Checks <span className="text-zinc-600 font-normal">(deprioritise if present)</span>
+              </p>
+              <div className="space-y-1.5">
+                {redFlagChecks.map((f, i) => (
+                  <div key={i} className="flex items-start gap-3 text-xs bg-orange-950/20 border border-orange-900/30 rounded-lg px-3 py-2">
+                    <span className="text-orange-400 shrink-0 mt-0.5">⚠️</span>
+                    <div className="min-w-0 space-y-0.5">
+                      <p className="text-zinc-300 leading-relaxed">{f.check}</p>
+                      <p className="text-zinc-600">Field: <span className="font-mono text-zinc-500">{f.resume_field}</span></p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
