@@ -49,23 +49,23 @@ function CandidateCard({ c }: { c: CandidateResult }) {
             <p className="text-zinc-400 text-xs italic border-l-2 border-zinc-700 pl-3">{c.reasoning}</p>
           )}
 
-          {c.baseline_failures.length > 0 && (
+          {c.baseline_failures?.length > 0 && (
             <div className="text-xs text-red-400">
               Baseline failures: {c.baseline_failures.join(", ")}
             </div>
           )}
-          {c.p0_matches.length > 0 && (
+          {c.p0_matches?.length > 0 && (
             <div className="text-xs text-green-400">
               P0 matches: {c.p0_matches.join(", ")}
             </div>
           )}
-          {c.extra_param_matches.length > 0 && (
+          {c.extra_param_matches?.length > 0 && (
             <div className="text-xs text-purple-400">
               Extra param matches: {c.extra_param_matches.join(", ")}
             </div>
           )}
 
-          {c.field_matches.length > 0 && (
+          {c.field_matches?.length > 0 && (
             <Table>
               <TableHeader>
                 <TableRow className="border-zinc-800">
