@@ -343,12 +343,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
             <FieldMatchTable results={session.full_results} />
 
             {/* token breakdown */}
-            <details>
-              <summary className="text-xs text-zinc-500 cursor-pointer hover:text-zinc-300">Token usage breakdown</summary>
-              <pre className="mt-2 text-xs text-zinc-500 bg-zinc-900 p-3 rounded-lg overflow-auto">
-                {JSON.stringify(session.token_totals, null, 2)}
-              </pre>
-            </details>
+            <TokenUsagePanel totals={session.token_totals || {}} />
           </div>
         )}
       </div>
@@ -559,5 +554,65 @@ function ActiveRubricPanel({ config }: { config: Record<string, unknown> | null 
         </div>
       )}
     </div>
+  );
+}
+
+function TokenUsagePanel({ totals }: { totals: Record<string, any> }) {
+  if (!totals || Object.keys(totals).length === 0) return null;
+  const totalTokens = totals._total_tokens || 0;
+  const callEntries = Object.entries(totals).filter(([key]) => key !== "_total_tokens");
+
+  return (
+    <details className="mt-8 group">
+      <summary className="text-xs font-semibold text-zinc-500 uppercase tracking-wider cursor-pointer hover:text-zinc-300 list-none flex items-center gap-2 select-none">
+        <span className="text-zinc-600 group-open:rotate-90 transition-transform">▸</span>
+        Token Usage Breakdown
+      </summary>
+      
+      <div className="mt-3 p-4 bg-zinc-900 border border-zinc-800 rounded-xl space-y-4">
+        <div className="grid grid-cols-2 gap-4 pb-4 border-b border-zinc-800/50">
+          <div>
+            <p className="text-[10px] text-zinc-500 uppercase mb-1">Total Tokens</p>
+            <p className="text-lg text-emerald-400 font-mono">{totalTokens.toLocaleString()}</p>
+          </div>
+          <div>
+            <p className="text-[10px] text-zinc-500 uppercase mb-1">API Calls Tracked</p>
+            <p className="text-lg text-zinc-200 font-mono">{callEntries.length}</p>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          {callEntries.map(([name, data]) => {
+            const row = data as Record<string, any>;
+            return (
+              <div key={name} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-zinc-950/60 border border-zinc-800/50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-medium text-zinc-300">{name}</span>
+                  {row.latency_seconds ? (
+                    <span className="text-[10px] bg-zinc-800/80 border border-zinc-700 text-zinc-400 px-2 py-0.5 rounded-full font-mono flex items-center gap-1">
+                      <span className="text-emerald-500 shrink-0">⚡</span> {row.latency_seconds}s
+                    </span>
+                  ) : null}
+                </div>
+                <div className="flex items-center gap-6 text-[11px] font-mono">
+                  <div className="flex flex-col items-end">
+                    <span className="text-zinc-600 mb-0.5 uppercase">In</span>
+                    <span className="text-zinc-400">{row.input_tokens?.toLocaleString() || 0}</span>
+                  </div>
+                  <div className="flex flex-col items-end">
+                    <span className="text-zinc-600 mb-0.5 uppercase">Out</span>
+                    <span className="text-zinc-400">{row.output_tokens?.toLocaleString() || 0}</span>
+                  </div>
+                  <div className="flex flex-col items-end w-16">
+                    <span className="text-zinc-600 mb-0.5 uppercase">Total</span>
+                    <span className="text-blue-400 font-medium text-xs">{row.total_tokens?.toLocaleString() || 0}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </details>
   );
 }
