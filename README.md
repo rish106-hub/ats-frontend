@@ -30,7 +30,7 @@ Deploy on [Vercel](https://vercel.com) (recommended for Next.js):
 
 1. Import this repo in the Vercel dashboard
 2. Add environment variable:
-   - `NEXT_PUBLIC_API_URL` → your Railway backend public URL (e.g. `https://ats-backend-production.up.railway.app`)
+   - `NEXT_PUBLIC_API_URL` → `https://ats-backend-production-89fc.up.railway.app`
 3. Deploy
 
 The backend must be deployed and reachable before the frontend can function.
