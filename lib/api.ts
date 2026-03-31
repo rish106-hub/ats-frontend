@@ -15,17 +15,24 @@ export interface FieldMatch {
   note: string;
 }
 
+export interface P0Match {
+  signal: string;
+  score: number;
+}
+
 export interface CandidateResult {
   candidate_name: string;
   field_matches: FieldMatch[];
   baseline_pass: boolean;
   baseline_failures: string[];
   p0_score: number;
-  p0_matches: string[];
+  p0_matches: P0Match[] | string[];
   extra_param_matches: string[];
+  red_flags_found: string[];
   overall_score: number;
   classification: "P0" | "Baseline" | "Reject";
   reasoning: string;
+  confidence?: "high" | "medium" | "low";
 }
 
 export interface PreviewResults {
