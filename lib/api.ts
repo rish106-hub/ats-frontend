@@ -15,6 +15,38 @@ export interface FieldMatch {
   note: string;
 }
 
+export interface RedFlag {
+  flag: string;
+  risk_type: string;
+  lens?: string;
+}
+
+export interface RoleContext {
+  org_stage?: string;
+  seniority_level?: string;
+  archetype?: string;
+}
+
+export interface JdAnalysis {
+  role?: string;
+  role_type?: string;
+  role_context?: RoleContext;
+  one_liner?: string;
+  baseline_signals?: string[];
+  p0_signals?: string[];
+  red_flags?: RedFlag[];
+  jd_quality_score?: number;
+  vague_requirements?: string[];
+  conflicting_requirements?: string[];
+  inferred_not_explicit?: boolean;
+  gap_questions?: Array<{
+    question: string;
+    options: string[];
+    impacts: string;
+    field_target: string;
+  }>;
+}
+
 export interface P0Match {
   signal: string;
   score: number;
@@ -51,7 +83,7 @@ export interface Session {
   status: SessionStatus;
   created_at: string;
   jd_text: string | null;
-  jd_analysis: Record<string, unknown> | null;
+  jd_analysis: JdAnalysis | null;
   base_criteria: Record<string, unknown> | null;
   synthesized_config: Record<string, unknown> | null;
   final_config: Record<string, unknown> | null;

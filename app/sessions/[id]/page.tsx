@@ -2,7 +2,7 @@
 
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, type Session, type CandidateFeedback } from "@/lib/api";
+import { api, type Session, type CandidateFeedback, type JdAnalysis } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -104,7 +104,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   if (loading) return <Shell><p className="text-zinc-500 p-8">Loading…</p></Shell>;
   if (!session) return <Shell><p className="text-red-400 p-8">{error || "Session not found."}</p></Shell>;
 
-  const jd = session.jd_analysis as Record<string, unknown> | null;
+  const jd = session.jd_analysis;
   const config = session.synthesized_config as Record<string, unknown> | null;
   const tokens = (session.token_totals as Record<string, unknown>)?._total_tokens as number | undefined;
 
@@ -119,6 +119,11 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
           <Separator orientation="vertical" className="h-4 bg-zinc-700" />
           <span className="text-zinc-100 text-sm font-medium">
             {jd ? String(jd.role ?? "Session") : "New session"}
+            {jd?.role_context?.seniority_level && (
+              <span className="ml-2 text-[10px] bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded uppercase font-bold tracking-wider">
+                {jd.role_context.seniority_level}
+              </span>
+            )}
           </span>
         </div>
         <div className="flex items-center gap-4">
@@ -416,43 +421,108 @@ function StepNav({ current, session }: { current: Step; session: Session }) {
   );
 }
 
-function CriteriaSummary({ jd }: { jd: Record<string, unknown> }) {
-  const baseline = (jd.baseline as Record<string, unknown>) ?? {};
-  const p0 = (jd.p0_signals as Array<Record<string, string>>) ?? [];
-  const skills = (baseline.skills_required as string[]) ?? [];
-  const expYears = baseline.experience_years_min as number | undefined;
-  const domain = baseline.domain_required as string | undefined;
-
-  // Build the human-readable summary sentence
-  const parts: string[] = [];
-  if (skills.length) parts.push(skills.slice(0, 4).join(", ") + (skills.length > 4 ? ` and ${skills.length - 4} more` : ""));
-  const expPart = expYears ? `${expYears}+ years of experience` : "";
-  const domainPart = domain && domain.toLowerCase() !== "not specified" ? `in ${domain}` : "";
-  if (expPart || domainPart) parts.push([expPart, domainPart].filter(Boolean).join(" "));
-  const p0Part = p0.length ? p0.slice(0, 3).map(p => p.signal).join(", ") : "";
-
-  const summary = [
-    parts.length ? `Candidate must possess ${parts.join(", ")}` : null,
-    p0Part ? `and demonstrate ${p0Part}` : null,
-  ].filter(Boolean).join(" ") + (parts.length || p0Part ? "." : "");
+function CriteriaSummary({ jd }: { jd: JdAnalysis }) {
+  const oneLiner = jd.one_liner ?? null;
+  const baselineSignals = jd.baseline_signals ?? [];
+  const p0Signals = jd.p0_signals ?? [];
+  const redFlags = jd.red_flags ?? [];
+  const roleContext = jd.role_context ?? {};
+  const vagueReqs = jd.vague_requirements ?? [];
 
   return (
-    <div className="space-y-3">
-      {summary && (
-        <p className="text-sm text-zinc-200 leading-relaxed bg-zinc-900 border border-zinc-700/60 rounded-xl px-4 py-3">
-          <span className="text-zinc-500 font-semibold">In short: </span>
-          {summary}
-        </p>
+    <div className="space-y-6">
+      {/* Role & Context Info */}
+      <div className="flex flex-wrap items-center gap-2">
+        {jd.role_type && (
+          <span className="text-[10px] bg-zinc-800 text-zinc-400 border border-zinc-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+            {jd.role_type}
+          </span>
+        )}
+        {roleContext.seniority_level && (
+          <span className="text-[10px] bg-blue-900/30 text-blue-300 border border-blue-800/50 px-2 py-0.5 rounded-full font-medium">
+            Seniority: {roleContext.seniority_level}
+          </span>
+        )}
+        {roleContext.archetype && (
+          <span className="text-[10px] bg-purple-900/30 text-purple-300 border border-purple-800/50 px-2 py-0.5 rounded-full font-medium">
+            Archetype: {roleContext.archetype}
+          </span>
+        )}
+        {roleContext.org_stage && (
+          <span className="text-[10px] bg-emerald-900/30 text-emerald-300 border border-emerald-800/50 px-2 py-0.5 rounded-full font-medium">
+            Stage: {roleContext.org_stage}
+          </span>
+        )}
+      </div>
+
+      {/* Person One-Liner */}
+      {oneLiner && (
+        <div className="bg-zinc-900/50 border-l-2 border-zinc-700 px-4 py-2.5">
+          <p className="text-sm italic text-zinc-400">"{oneLiner}"</p>
+        </div>
       )}
-      <div className="grid grid-cols-2 gap-4 p-4 bg-zinc-950 rounded-lg border border-zinc-800 text-xs">
-        <div>
-          <p className="text-zinc-400 font-medium mb-2">Baseline skills</p>
-          {skills.length ? skills.map((s, i) => <p key={i} className="text-zinc-300">• {s}</p>) : <p className="text-zinc-600">None extracted</p>}
+
+      {/* Requirements Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Baseline Signals */}
+        <div className="space-y-3">
+          <h4 className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Baseline Signals</h4>
+          <div className="space-y-2">
+            {baselineSignals.length ? baselineSignals.map((signal, i) => (
+              <div key={i} className="flex gap-2 text-sm text-zinc-300 leading-relaxed">
+                <span className="text-zinc-600 mt-0.5 select-none">•</span>
+                <span>{signal}</span>
+              </div>
+            )) : <p className="text-xs text-zinc-600">No baseline criteria extracted.</p>}
+          </div>
         </div>
-        <div>
-          <p className="text-zinc-400 font-medium mb-2">P0 signals</p>
-          {p0.length ? p0.map((p, i) => <p key={i} className="text-zinc-300">• {p.signal}</p>) : <p className="text-zinc-600">None extracted</p>}
+
+        {/* P0 Signals */}
+        <div className="space-y-3">
+          <h4 className="text-[10px] font-bold uppercase tracking-widest text-amber-500/80">P0 Signals (High Priority)</h4>
+          <div className="space-y-2">
+            {p0Signals.length ? p0Signals.map((signal, i) => (
+              <div key={i} className="flex gap-2 text-sm text-amber-100/90 leading-relaxed">
+                <span className="text-amber-500 mt-0.5 select-none">✦</span>
+                <span>{signal}</span>
+              </div>
+            )) : <p className="text-xs text-zinc-600">No priority signals extraction.</p>}
+          </div>
         </div>
+      </div>
+
+      {/* Red Flags & Vague Reqs */}
+      <div className="pt-2 flex flex-col gap-4">
+        {redFlags.length > 0 && (
+          <div className="space-y-2">
+            <h4 className="text-[10px] font-bold uppercase tracking-widest text-red-500/80">Red Flags</h4>
+            <div className="flex flex-wrap gap-2">
+              {redFlags.map((f, i) => (
+                <div key={i} className="flex items-center gap-2 bg-red-950/30 border border-red-900/40 px-3 py-1.5 rounded-lg">
+                  <span className="text-xs text-zinc-200">{f.flag}</span>
+                  {f.risk_type && (
+                    <span className="text-[9px] font-mono text-red-400/70 uppercase border-l border-red-900/50 pl-2">
+                      {f.risk_type.replace(/_/g, ' ')}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {vagueReqs.length > 0 && (
+          <div className="space-y-2">
+            <h4 className="text-[10px] font-bold uppercase tracking-widest text-zinc-600">Unverifiable Phrasing</h4>
+            <div className="flex flex-wrap gap-1.5">
+              {vagueReqs.map((req, i) => (
+                <span key={i} className="text-[10px] bg-zinc-900 text-zinc-500 border border-zinc-800 px-2 py-0.5 rounded cursor-help" title="This requirement is too vague for objective scaling.">
+                  {req}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
