@@ -78,6 +78,33 @@ export interface CandidateFeedback {
   reason: string;
 }
 
+export interface ResumeLens {
+  ownership_arc: string;
+  domain_proximity: string;
+  craft_signals: string;
+  experience_profile: string;
+  trajectory: string;
+  hm_flag: string;
+  red_flag_notes: string;
+}
+
+export interface ResumeListItem {
+  id: string;
+  session_id: string;
+  file_name: string;
+  resume_json: any;
+  quality: any;
+  keyword_score: number;
+  resume_lens?: ResumeLens | null;
+}
+
+export interface ResumeDetail {
+  file_name: string;
+  raw_text: string | null;
+  resume_json: any;
+  resume_lens: ResumeLens | null;
+}
+
 export interface Session {
   id: string;
   status: SessionStatus;
@@ -171,4 +198,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ api_key: apiKey }),
     }),
+
+  listResumes: (id: string) =>
+    req<ResumeListItem[]>(`/api/sessions/${id}/resumes`),
+
+  getResumeDetail: (sessionId: string, fileName: string) =>
+    req<ResumeDetail>(`/api/sessions/${sessionId}/resumes/${encodeURIComponent(fileName)}`),
 };

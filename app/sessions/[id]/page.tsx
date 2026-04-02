@@ -2,7 +2,7 @@
 
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, type Session, type CandidateFeedback, type JdAnalysis } from "@/lib/api";
+import { api, type Session, type CandidateFeedback, type JdAnalysis, type ResumeListItem } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -28,6 +28,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   const router = useRouter();
 
   const [session, setSession] = useState<Session | null>(null);
+  const [resumes, setResumes] = useState<ResumeListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -54,12 +55,24 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
     refresh().catch(() => setError("Session not found.")).finally(() => setLoading(false));
   }, [refresh]);
 
-  async function run<T>(fn: () => Promise<T>): Promise<T | undefined> {
+  // Fetch the resumes list so FieldMatchTable can resolve file_name → candidate_name.
+  const refreshResumes = useCallback(() => {
+    api.listResumes(id).then(setResumes).catch((e) => {
+      console.warn("[listResumes failed]", e);
+    });
+  }, [id]);
+
+  useEffect(() => {
+    refreshResumes();
+  }, [refreshResumes]);
+
+  async function run<T>(fn: () => Promise<T>, opts?: { refreshResumesList?: boolean }): Promise<T | undefined> {
     setBusy(true);
     setError("");
     try {
       const result = await fn();
       await refresh();
+      if (opts?.refreshResumesList) refreshResumes();
       return result;
     } catch (e) {
       setError((e as Error).message);
@@ -80,11 +93,11 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   }
 
   function handleStartPreview() {
-    run(() => api.startPreview(id, apiKey || undefined));
+    run(() => api.startPreview(id, apiKey || undefined), { refreshResumesList: true });
   }
 
   function handleRefine() {
-    run(() => api.refinePreview(id, includeText, excludeText, candidateFeedback, apiKey || undefined)).then(() => {
+    run(() => api.refinePreview(id, includeText, excludeText, candidateFeedback, apiKey || undefined), { refreshResumesList: true }).then(() => {
       setIncludeText("");
       setExcludeText("");
       setCandidateFeedback([]);
@@ -92,11 +105,11 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   }
 
   function handleReload() {
-    run(() => api.reloadPreview(id, apiKey || undefined));
+    run(() => api.reloadPreview(id, apiKey || undefined), { refreshResumesList: true });
   }
 
   function handleAccept() {
-    run(() => api.accept(id, apiKey || undefined));
+    run(() => api.accept(id, apiKey || undefined), { refreshResumesList: true });
   }
 
   // ── render ─────────────────────────────────────────────────────────────
@@ -270,9 +283,11 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
             )}
 
             {/* candidate results */}
-            <FieldMatchTable 
-              results={session.preview_field_results} 
-              onFeedback={(fb) => setCandidateFeedback(prev => [...prev.filter(f => f.file_name !== fb.file_name), fb])} 
+            <FieldMatchTable
+              results={session.preview_field_results}
+              sessionId={id}
+              resumes={resumes}
+              onFeedback={(fb) => setCandidateFeedback(prev => [...prev.filter(f => f.file_name !== fb.file_name), fb])}
             />
 
             <Separator className="bg-zinc-800" />
@@ -367,7 +382,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
                 Back to sessions
               </Button>
             </div>
-            <FieldMatchTable results={session.full_results} />
+            <FieldMatchTable results={session.full_results} sessionId={id} resumes={resumes} />
 
             {/* token breakdown */}
             <TokenUsagePanel totals={session.token_totals || {}} />

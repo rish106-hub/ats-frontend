@@ -1,10 +1,11 @@
 "use client";
 
-import { type CandidateResult, type PreviewResults, type P0Match, type CandidateFeedback } from "@/lib/api";
+import { type CandidateResult, type PreviewResults, type P0Match, type CandidateFeedback, type ResumeListItem, type ResumeLens } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { ResumeDrawer } from "@/components/resume-drawer";
 
 // ── constants ─────────────────────────────────────────────────────────────────
 
@@ -174,7 +175,12 @@ function P0Bar({ m, index }: { m: P0Match | string; index: number }) {
 
 // ── candidate card ────────────────────────────────────────────────────────────
 
-function CandidateCard({ c, rank, onFeedback }: { c: CandidateResult; rank: number; onFeedback?: (fb: CandidateFeedback) => void }) {
+function CandidateCard({ c, rank, onFeedback, onViewResume }: {
+  c: CandidateResult;
+  rank: number;
+  onFeedback?: (fb: CandidateFeedback) => void;
+  onViewResume?: (c: CandidateResult) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackAction, setFeedbackAction] = useState("should_pass");
@@ -193,15 +199,24 @@ function CandidateCard({ c, rank, onFeedback }: { c: CandidateResult; rank: numb
 
   return (
     <div className="border border-zinc-800 rounded-xl overflow-hidden shadow-sm">
-      {/* card header */}
-      <button
+      {/* card header — div not button so we can nest interactive elements */}
+      <div
         onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center justify-between px-4 py-3.5 bg-zinc-900 hover:bg-zinc-800/80 transition-colors text-left gap-3"
+        className="w-full flex items-center justify-between px-4 py-3.5 bg-zinc-900 hover:bg-zinc-800/80 transition-colors cursor-pointer gap-3 select-none"
       >
         {/* left: rank + name + badges */}
         <div className="flex items-center gap-3 min-w-0">
           <span className="text-[10px] font-mono text-zinc-600 shrink-0">#{rank}</span>
           <span className="font-semibold text-sm text-zinc-100 truncate">{c.candidate_name || "Unknown"}</span>
+          {onViewResume && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onViewResume(c); }}
+              className="flex items-center gap-1 text-[10px] font-semibold bg-zinc-800 hover:bg-blue-900/60 text-zinc-400 hover:text-blue-300 border border-zinc-700 hover:border-blue-700 px-2 py-1 rounded transition-colors shrink-0"
+              title="View resume PDF"
+            >
+              📄 Resume
+            </button>
+          )}
           <span className={`text-xs px-2 py-0.5 rounded-full font-semibold shrink-0 ${style}`}>
             {c.classification}
           </span>
@@ -239,7 +254,7 @@ function CandidateCard({ c, rank, onFeedback }: { c: CandidateResult; rank: numb
           <ScoreRing score={c.overall_score} />
           <span className="text-zinc-600 text-xs">{open ? "▲" : "▼"}</span>
         </div>
-      </button>
+      </div>
 
       {/* expanded body */}
       {open && (
@@ -345,36 +360,111 @@ function CandidateCard({ c, rank, onFeedback }: { c: CandidateResult; rank: numb
 
 // ── main export ───────────────────────────────────────────────────────────────
 
-export function FieldMatchTable({ results, onFeedback }: { results: PreviewResults; onFeedback?: (fb: CandidateFeedback) => void }) {
+export function FieldMatchTable({
+  results,
+  onFeedback,
+  sessionId,
+  resumes = [],
+}: {
+  results: PreviewResults;
+  onFeedback?: (fb: CandidateFeedback) => void;
+  sessionId?: string;
+  resumes?: ResumeListItem[];
+}) {
   const { summary, results: candidates } = results;
+
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerCandidate, setDrawerCandidate] = useState<CandidateResult | null>(null);
+  const [drawerFileName, setDrawerFileName] = useState<string>("");
+  const [drawerLens, setDrawerLens] = useState<ResumeLens | null>(null);
+
+  // Build name → file_name lookup from the resumes list.
+  // Matches on resume_json.name first, falls back to file_name stem.
+  const fileNameByCandidate = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const r of resumes) {
+      const parsedName: string = r.resume_json?.name || "";
+      const stemName = r.file_name.replace(/\.pdf$/i, "").replace(/[_-]/g, " ").trim();
+      if (parsedName) map[parsedName.toLowerCase()] = r.file_name;
+      map[stemName.toLowerCase()] = r.file_name;
+    }
+    return map;
+  }, [resumes]);
+
+  function resolveFileName(candidateName: string): string {
+    const key = candidateName.toLowerCase();
+    // exact match
+    if (fileNameByCandidate[key]) return fileNameByCandidate[key];
+    // partial match — candidate name appears in a known key or vice versa
+    for (const [k, v] of Object.entries(fileNameByCandidate)) {
+      if (k.includes(key) || key.includes(k)) return v;
+    }
+    return candidateName; // last resort — use name as-is
+  }
+
+  function handleViewResume(c: CandidateResult) {
+    console.log("[handleViewResume] called for:", c.candidate_name, "sessionId:", sessionId, "resumes:", resumes.length);
+    if (!sessionId) {
+      console.warn("[handleViewResume] sessionId is missing — drawer will not open");
+      return;
+    }
+    const fileName = resolveFileName(c.candidate_name || "");
+    console.log("[handleViewResume] resolved fileName:", fileName);
+    // Grab lens notes from the resumes list if available
+    const matchedResume = resumes.find((r) => r.file_name === fileName);
+    setDrawerCandidate(c);
+    setDrawerFileName(fileName);
+    setDrawerLens(matchedResume?.resume_lens ?? null);
+    setDrawerOpen(true);
+  }
 
   if (!candidates || candidates.length === 0) {
     return <p className="text-zinc-500 text-sm">No candidates to display.</p>;
   }
 
   return (
-    <div className="space-y-4">
-      {/* summary stat bar */}
-      <div className="grid grid-cols-4 gap-3">
-        {[
-          { label: "Evaluated", value: summary.total_evaluated, cls: "text-zinc-100", ring: "border-zinc-700" },
-          { label: "P0", value: summary.p0_count, cls: "text-emerald-400", ring: "border-emerald-800" },
-          { label: "Baseline", value: summary.baseline_count, cls: "text-blue-400", ring: "border-blue-800" },
-          { label: "Reject", value: summary.reject_count, cls: "text-red-400", ring: "border-red-900" },
-        ].map(({ label, value, cls, ring }) => (
-          <div key={label} className={`bg-zinc-900 border ${ring} rounded-xl p-4 text-center`}>
-            <div className={`text-3xl font-bold font-mono ${cls}`}>{value}</div>
-            <div className="text-zinc-500 text-xs mt-1 font-medium uppercase tracking-wider">{label}</div>
-          </div>
-        ))}
+    <>
+      <div className="space-y-4">
+        {/* summary stat bar */}
+        <div className="grid grid-cols-4 gap-3">
+          {[
+            { label: "Evaluated", value: summary.total_evaluated, cls: "text-zinc-100", ring: "border-zinc-700" },
+            { label: "P0", value: summary.p0_count, cls: "text-emerald-400", ring: "border-emerald-800" },
+            { label: "Baseline", value: summary.baseline_count, cls: "text-blue-400", ring: "border-blue-800" },
+            { label: "Reject", value: summary.reject_count, cls: "text-red-400", ring: "border-red-900" },
+          ].map(({ label, value, cls, ring }) => (
+            <div key={label} className={`bg-zinc-900 border ${ring} rounded-xl p-4 text-center`}>
+              <div className={`text-3xl font-bold font-mono ${cls}`}>{value}</div>
+              <div className="text-zinc-500 text-xs mt-1 font-medium uppercase tracking-wider">{label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* ranked candidate list */}
+        <div className="space-y-2">
+          {candidates.map((c, i) => (
+            <CandidateCard
+              key={i}
+              c={c}
+              rank={i + 1}
+              onFeedback={onFeedback}
+              onViewResume={sessionId ? handleViewResume : undefined}
+            />
+          ))}
+        </div>
       </div>
 
-      {/* ranked candidate list */}
-      <div className="space-y-2">
-        {candidates.map((c, i) => (
-          <CandidateCard key={i} c={c} rank={i + 1} onFeedback={onFeedback} />
-        ))}
-      </div>
-    </div>
+      {/* resume drawer */}
+      {drawerCandidate && sessionId && (
+        <ResumeDrawer
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          sessionId={sessionId}
+          fileName={drawerFileName}
+          candidate={drawerCandidate}
+          resumeLens={drawerLens}
+        />
+      )}
+    </>
   );
 }
