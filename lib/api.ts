@@ -130,7 +130,14 @@ export interface Session {
   synthesized_config: Record<string, unknown> | null;
   final_config: Record<string, unknown> | null;
   preview_iteration_count: number;
-  extra_params_history: Array<{ iteration: number; include: string; exclude: string }>;
+  extra_params_history: Array<{
+    iteration: number;
+    include: string;
+    exclude: string;
+    update_baseline?: string;
+    update_p0?: string;
+  }>;
+  candidate_feedback_history: Array<Record<string, unknown>>;
   preview_field_results: PreviewResults | null;
   full_results: PreviewResults | null;
   token_totals: Record<string, unknown>;
@@ -196,10 +203,18 @@ export const api = {
       body: JSON.stringify({ api_key: apiKey }),
     }),
 
-  refinePreview: (id: string, include: string, exclude: string, candidate_feedback: CandidateFeedback[] = [], apiKey?: string) =>
+  refinePreview: (
+    id: string,
+    include: string,
+    exclude: string,
+    candidate_feedback: CandidateFeedback[] = [],
+    apiKey?: string,
+    update_baseline = "",
+    update_p0 = "",
+  ) =>
     req<Session>(`/api/sessions/${id}/preview/refine`, {
       method: "POST",
-      body: JSON.stringify({ include, exclude, candidate_feedback, api_key: apiKey }),
+      body: JSON.stringify({ include, exclude, candidate_feedback, api_key: apiKey, update_baseline, update_p0 }),
     }),
 
   reloadPreview: (id: string, apiKey?: string) =>

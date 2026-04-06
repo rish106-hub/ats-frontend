@@ -40,6 +40,8 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   const [files, setFiles] = useState<File[]>([]);
   const [includeText, setIncludeText] = useState("");
   const [excludeText, setExcludeText] = useState("");
+  const [updateBaselineText, setUpdateBaselineText] = useState("");
+  const [updateP0Text, setUpdateP0Text] = useState("");
   const [candidateFeedback, setCandidateFeedback] = useState<CandidateFeedback[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -92,13 +94,24 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   }
 
   function handleRefine() {
-    run(() => api.refinePreview(id, includeText, excludeText, candidateFeedback, apiKey || undefined), { refreshResumesList: true })
-      .then(() => { setIncludeText(""); setExcludeText(""); setCandidateFeedback([]); });
+    run(
+      () => api.refinePreview(
+        id, includeText, excludeText, candidateFeedback,
+        apiKey || undefined, updateBaselineText, updateP0Text,
+      ),
+      { refreshResumesList: true },
+    ).then(() => {
+      setIncludeText("");
+      setExcludeText("");
+      setUpdateBaselineText("");
+      setUpdateP0Text("");
+      setCandidateFeedback([]);
+    });
   }
 
   /** Called when a candidate Disagree form is submitted — immediately re-evaluates. */
   function handleImmediateFeedback(fb: CandidateFeedback) {
-    run(() => api.refinePreview(id, "", "", [fb], apiKey || undefined), { refreshResumesList: true });
+    run(() => api.refinePreview(id, "", "", [fb], apiKey || undefined, "", ""), { refreshResumesList: true });
   }
 
   function handleReload() {
@@ -331,6 +344,16 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
                             <span className="text-red-500">−</span> {p.exclude}
                           </span>
                         )}
+                        {p.update_baseline && (
+                          <span className="flex items-center gap-1 bg-amber-950/50 border border-amber-800/50 text-amber-300 px-2 py-0.5 rounded-full">
+                            <span className="text-amber-500">⚙︎</span> baseline: {p.update_baseline}
+                          </span>
+                        )}
+                        {p.update_p0 && (
+                          <span className="flex items-center gap-1 bg-violet-950/50 border border-violet-800/50 text-violet-300 px-2 py-0.5 rounded-full">
+                            <span className="text-violet-400">⚡</span> P0: {p.update_p0}
+                          </span>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -351,6 +374,8 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
             {/* refine inputs */}
             <div className="space-y-3">
               <p className="text-xs text-zinc-400 font-medium">Refine criteria for next iteration:</p>
+
+              {/* Row 1: include / exclude */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs text-green-600 mb-1.5 flex items-center gap-1">
@@ -378,10 +403,38 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
                 </div>
               </div>
 
+              {/* Row 2: update baseline / update P0 */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs text-amber-500 mb-1.5 flex items-center gap-1">
+                    <span>⚙︎</span> Update baseline filters…
+                  </label>
+                  <Textarea
+                    placeholder="e.g. Must have tier-1 Indian university education; remove the consulting requirement"
+                    value={updateBaselineText}
+                    onChange={(e) => setUpdateBaselineText(e.target.value)}
+                    rows={3}
+                    className="bg-zinc-950 border-amber-900/50 focus:border-amber-700 text-zinc-200 text-sm resize-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-violet-400 mb-1.5 flex items-center gap-1">
+                    <span>⚡</span> Update P0 signals…
+                  </label>
+                  <Textarea
+                    placeholder="e.g. Give higher weight to 0-to-1 builders; add a signal for scaling past 1M users"
+                    value={updateP0Text}
+                    onChange={(e) => setUpdateP0Text(e.target.value)}
+                    rows={3}
+                    className="bg-zinc-950 border-violet-900/50 focus:border-violet-700 text-zinc-200 text-sm resize-none"
+                  />
+                </div>
+              </div>
+
               {/* pending params preview */}
-              {(includeText.trim() || excludeText.trim()) && (
+              {(includeText.trim() || excludeText.trim() || updateBaselineText.trim() || updateP0Text.trim()) && (
                 <div className="flex flex-wrap gap-2 px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg">
-                  <span className="text-[10px] text-zinc-500 uppercase tracking-wide self-center">Will add:</span>
+                  <span className="text-[10px] text-zinc-500 uppercase tracking-wide self-center">Will apply:</span>
                   {includeText.trim() && (
                     <span className="text-xs bg-green-950/70 border border-green-800/50 text-green-300 px-2 py-0.5 rounded-full">
                       + {includeText.trim()}
@@ -390,6 +443,16 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
                   {excludeText.trim() && (
                     <span className="text-xs bg-red-950/70 border border-red-800/50 text-red-300 px-2 py-0.5 rounded-full">
                       − {excludeText.trim()}
+                    </span>
+                  )}
+                  {updateBaselineText.trim() && (
+                    <span className="text-xs bg-amber-950/70 border border-amber-800/50 text-amber-300 px-2 py-0.5 rounded-full">
+                      ⚙︎ baseline: {updateBaselineText.trim()}
+                    </span>
+                  )}
+                  {updateP0Text.trim() && (
+                    <span className="text-xs bg-violet-950/70 border border-violet-800/50 text-violet-300 px-2 py-0.5 rounded-full">
+                      ⚡ P0: {updateP0Text.trim()}
                     </span>
                   )}
                 </div>
