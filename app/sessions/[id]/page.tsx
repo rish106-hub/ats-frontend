@@ -2,7 +2,7 @@
 
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, type Session, type CandidateFeedback, type JdAnalysis, type ResumeListItem } from "@/lib/api";
+import { api, type Session, type CandidateFeedback, type JdAnalysis, type ResumeListItem, type LessonLearned, type SkippedInfo } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -51,20 +51,15 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
     return s;
   }, [id]);
 
+  const refreshResumes = useCallback(() => {
+    api.listResumes(id).then(setResumes).catch((e) => console.warn("[listResumes]", e));
+  }, [id]);
+
   useEffect(() => {
     refresh().catch(() => setError("Session not found.")).finally(() => setLoading(false));
   }, [refresh]);
 
-  // Fetch the resumes list so FieldMatchTable can resolve file_name → candidate_name.
-  const refreshResumes = useCallback(() => {
-    api.listResumes(id).then(setResumes).catch((e) => {
-      console.warn("[listResumes failed]", e);
-    });
-  }, [id]);
-
-  useEffect(() => {
-    refreshResumes();
-  }, [refreshResumes]);
+  useEffect(() => { refreshResumes(); }, [refreshResumes]);
 
   async function run<T>(fn: () => Promise<T>, opts?: { refreshResumesList?: boolean }): Promise<T | undefined> {
     setBusy(true);
@@ -89,7 +84,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
 
   function handleUploadResumes() {
     if (!files.length) { setError("Select at least one PDF."); return; }
-    run(() => api.uploadResumes(id, files, apiKey || undefined));
+    run(() => api.uploadResumes(id, files, apiKey || undefined), { refreshResumesList: true });
   }
 
   function handleStartPreview() {
@@ -97,11 +92,13 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   }
 
   function handleRefine() {
-    run(() => api.refinePreview(id, includeText, excludeText, candidateFeedback, apiKey || undefined), { refreshResumesList: true }).then(() => {
-      setIncludeText("");
-      setExcludeText("");
-      setCandidateFeedback([]);
-    });
+    run(() => api.refinePreview(id, includeText, excludeText, candidateFeedback, apiKey || undefined), { refreshResumesList: true })
+      .then(() => { setIncludeText(""); setExcludeText(""); setCandidateFeedback([]); });
+  }
+
+  /** Called when a candidate Disagree form is submitted — immediately re-evaluates. */
+  function handleImmediateFeedback(fb: CandidateFeedback) {
+    run(() => api.refinePreview(id, "", "", [fb], apiKey || undefined), { refreshResumesList: true });
   }
 
   function handleReload() {
@@ -217,8 +214,61 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
         {/* resumes uploaded confirmation */}
         {step === "resumes" && session.status === "resumes_uploaded" && (
           <Card className="bg-zinc-900 border-zinc-800">
-            <CardContent className="pt-6">
-              <p className="text-green-400 text-sm mb-4">Resumes parsed and ready.</p>
+            <CardContent className="pt-6 space-y-4">
+              {/* parse summary */}
+              {(() => {
+                const isExtractable = (r: ResumeListItem) => {
+                  const q = r.quality as any;
+                  if (!q) return true; // no quality data yet — assume fine
+                  if ("text_extractable" in q) return !!q.text_extractable;
+                  return !!q.readable; // fallback for old rows
+                };
+                const unreadable = resumes.filter(r => !isExtractable(r));
+                const readable   = resumes.filter(r =>  isExtractable(r));
+                return (
+                  <>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <span className="text-green-400 text-sm">
+                        ✓ {readable.length} resume{readable.length !== 1 ? "s" : ""} parsed successfully
+                      </span>
+                      {unreadable.length > 0 && (
+                        <span className="text-amber-400 text-sm">
+                          · {unreadable.length} could not be read
+                        </span>
+                      )}
+                    </div>
+
+                    {unreadable.length > 0 && (
+                      <div className="rounded-lg border border-amber-800/50 bg-amber-950/20 px-4 py-3 space-y-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-400">
+                          ⚠️ Unreadable PDFs — excluded from evaluation
+                        </p>
+                        <p className="text-xs text-zinc-500 leading-relaxed">
+                          These files could not be parsed. Common cause: scanned image PDFs with no selectable text.
+                          Re-upload as text-based PDFs to include them.
+                        </p>
+                        <div className="space-y-1">
+                          {unreadable.map((r, i) => {
+                            const reasons: string[] = (r.quality as any)?.reasons ?? [];
+                            return (
+                              <div key={i} className="flex items-start gap-2 text-xs">
+                                <span className="text-amber-500 shrink-0">•</span>
+                                <div className="min-w-0">
+                                  <span className="text-zinc-300 font-mono">{r.file_name}</span>
+                                  {reasons.length > 0 && (
+                                    <span className="text-zinc-600 ml-2">— {reasons[0]}</span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+
               <Button onClick={handleStartPreview} disabled={busy} className="bg-white text-zinc-950 hover:bg-zinc-200">
                 {busy ? "Running preview…" : "Start Preview Loop"}
               </Button>
@@ -249,6 +299,12 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
                   {(config as Record<string, string>).synthesis_notes}
                 </p>
               </div>
+            )}
+
+            {/* lessons learned — mental model shifts from disagree feedback */}
+            {config && Array.isArray((config as Record<string, unknown>).lessons_learned) &&
+             ((config as Record<string, unknown>).lessons_learned as unknown[]).length > 0 && (
+              <LessonsLearnedPanel lessons={(config as Record<string, unknown>).lessons_learned as LessonLearned[]} />
             )}
 
             {/* active rubric panel */}
@@ -287,7 +343,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
               results={session.preview_field_results}
               sessionId={id}
               resumes={resumes}
-              onFeedback={(fb) => setCandidateFeedback(prev => [...prev.filter(f => f.file_name !== fb.file_name), fb])}
+              onFeedback={handleImmediateFeedback}
             />
 
             <Separator className="bg-zinc-800" />
@@ -323,7 +379,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
               </div>
 
               {/* pending params preview */}
-              {(includeText.trim() || excludeText.trim() || candidateFeedback.length > 0) && (
+              {(includeText.trim() || excludeText.trim()) && (
                 <div className="flex flex-wrap gap-2 px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg">
                   <span className="text-[10px] text-zinc-500 uppercase tracking-wide self-center">Will add:</span>
                   {includeText.trim() && (
@@ -336,11 +392,6 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
                       − {excludeText.trim()}
                     </span>
                   )}
-                  {candidateFeedback.map((fb, idx) => (
-                    <span key={idx} className="text-xs bg-blue-950/70 border border-blue-800/50 text-blue-300 px-2 py-0.5 rounded-full truncate max-w-[200px]" title={fb.reason}>
-                      👤 Override: {fb.file_name} ({fb.action})
-                    </span>
-                  ))}
                 </div>
               )}
             </div>
@@ -383,6 +434,11 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
               </Button>
             </div>
             <FieldMatchTable results={session.full_results} sessionId={id} resumes={resumes} />
+
+            {/* skipped resumes — unreadable PDFs or resumes excluded by cap */}
+            {session.full_results._skipped && (
+              <SkippedResumesPanel skipped={session.full_results._skipped} />
+            )}
 
             {/* token breakdown */}
             <TokenUsagePanel totals={session.token_totals || {}} />
@@ -543,6 +599,100 @@ function CriteriaSummary({ jd }: { jd: JdAnalysis }) {
   );
 }
 
+// ── LessonsLearnedPanel ───────────────────────────────────────────────────────
+// Shows one card per lesson derived from disagree feedback. Each card surfaces:
+//   - What the recruiter said (reason_given)
+//   - The generalised rule Gemini derived (lesson)
+//   - Exactly what changed in the rubric (rubric_change)
+// This lets the recruiter verify that their mental model shift was understood
+// correctly BEFORE accepting the re-scored results.
+
+function LessonsLearnedPanel({ lessons }: { lessons: LessonLearned[] }) {
+  const [open, setOpen] = useState(false);
+  if (!lessons || lessons.length === 0) return null;
+
+  const actionColor = (action?: string) => {
+    if (action === "should_pass" || action === "p0_booster") return "text-emerald-400 border-emerald-800/50 bg-emerald-950/20";
+    if (action === "should_fail") return "text-red-400 border-red-800/50 bg-red-950/20";
+    return "text-zinc-400 border-zinc-700 bg-zinc-900/40";
+  };
+
+  const actionLabel = (action?: string) => {
+    if (action === "should_pass") return "Should PASS";
+    if (action === "should_fail") return "Should FAIL";
+    if (action === "p0_booster") return "P0 Boost";
+    return action ?? "Feedback";
+  };
+
+  return (
+    <div className="border border-amber-800/40 rounded-xl overflow-hidden">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 bg-amber-950/20 hover:bg-amber-950/30 transition-colors text-left"
+      >
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-semibold text-amber-300">🧠 Mental Model Shifts</span>
+          <span className="text-[10px] font-mono bg-amber-950/40 text-amber-400 border border-amber-800/50 px-2 py-0.5 rounded-full">
+            {lessons.length} lesson{lessons.length > 1 ? "s" : ""} applied
+          </span>
+        </div>
+        <span className="text-amber-600 text-xs">{open ? "▲" : "▼"}</span>
+      </button>
+
+      {open && (
+        <div className="px-4 py-4 bg-zinc-950/80 border-t border-amber-800/20 space-y-4">
+          <p className="text-[10px] text-zinc-500 leading-relaxed">
+            Each lesson below was derived from your disagree feedback and directly updated the evaluation rubric.
+            Verify that the AI understood your intent before reviewing the re-scored candidates.
+          </p>
+          {lessons.map((l, i) => (
+            <div key={i} className="border border-zinc-800 rounded-lg overflow-hidden">
+              {/* header */}
+              <div className="flex items-center gap-2 px-3 py-2 bg-zinc-900 border-b border-zinc-800">
+                <span className="text-[10px] font-mono text-zinc-600">#{i + 1}</span>
+                {l.candidate && (
+                  <span className="text-[10px] font-semibold text-zinc-400 truncate">{l.candidate}</span>
+                )}
+                {l.action && (
+                  <span className={`text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border ${actionColor(l.action)}`}>
+                    {actionLabel(l.action)}
+                  </span>
+                )}
+              </div>
+
+              <div className="px-3 py-3 space-y-3">
+                {/* what the recruiter said */}
+                {l.reason_given && (
+                  <div className="space-y-0.5">
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-zinc-600">You said</p>
+                    <p className="text-xs text-zinc-400 italic leading-relaxed">"{l.reason_given}"</p>
+                  </div>
+                )}
+
+                {/* the generalised lesson */}
+                {l.lesson && (
+                  <div className="space-y-0.5">
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-amber-600">Derived rule</p>
+                    <p className="text-xs text-amber-200/90 leading-relaxed">{l.lesson}</p>
+                  </div>
+                )}
+
+                {/* what changed in the rubric */}
+                {l.rubric_change && (
+                  <div className="space-y-0.5">
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-blue-600">Rubric change</p>
+                    <p className="text-xs text-blue-300/80 leading-relaxed font-mono text-[10px]">{l.rubric_change}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── ActiveRubricPanel ─────────────────────────────────────────────────────────
 // Shows the current synthesized rubric (baseline checks, P0 weights, red flags)
 // so the user can see exactly which criteria are now active.
@@ -568,12 +718,18 @@ function ActiveRubricPanel({ config }: { config: Record<string, unknown> | null 
         onClick={() => setOpen(v => !v)}
         className="w-full flex items-center justify-between px-4 py-3 bg-zinc-900 hover:bg-zinc-800/80 transition-colors text-left"
       >
-        <div className="flex items-center gap-3">
-          <span className="text-xs font-semibold text-zinc-200">⚖️ Active Evaluation Criteria</span>
-          <span className="text-[10px] font-mono bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-full">
-            {baselineChecks.length} baseline · {p0Weights.length} P0 · {redFlagChecks.length} flags
-          </span>
-        </div>
+        {(() => {
+          const hardCount = baselineChecks.filter(c => c.reject_if_missing !== false).length;
+          const softCount = baselineChecks.filter(c => c.reject_if_missing === false).length;
+          return (
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-xs font-semibold text-zinc-200">⚖️ Active Evaluation Criteria</span>
+              <span className="text-[10px] font-mono bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-full">
+                {hardCount} hard · {softCount > 0 ? `${softCount} relaxed · ` : ""}{p0Weights.length} P0 · {redFlagChecks.length} flags
+              </span>
+            </div>
+          );
+        })()}
         <span className="text-zinc-600 text-xs">{open ? "▲" : "▼"}</span>
       </button>
 
@@ -597,24 +753,58 @@ function ActiveRubricPanel({ config }: { config: Record<string, unknown> | null 
             </details>
           )}
 
-          {baselineChecks.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                ✅ Baseline Checks <span className="text-red-500 font-normal">(fail = auto reject)</span>
-              </p>
-              <div className="space-y-1.5">
-                {baselineChecks.map((c, i) => (
-                  <div key={i} className="flex items-start gap-3 text-xs bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 py-2">
-                    <span className="text-red-400 shrink-0 mt-0.5">⛔</span>
-                    <div className="min-w-0 space-y-0.5">
-                      <p className="text-zinc-200 leading-relaxed">{c.check}</p>
-                      <p className="text-zinc-600">Field: <span className="font-mono text-zinc-500">{c.resume_field}</span></p>
+          {baselineChecks.length > 0 && (() => {
+            const hardChecks = baselineChecks.filter(c => c.reject_if_missing !== false);
+            const softChecks = baselineChecks.filter(c => c.reject_if_missing === false);
+            return (
+              <div className="space-y-3">
+                {/* Hard filters */}
+                {hardChecks.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                      ⛔ Hard Filters <span className="text-red-500 font-normal">(fail = auto reject)</span>
+                    </p>
+                    <div className="space-y-1.5">
+                      {hardChecks.map((c, i) => (
+                        <div key={i} className="flex items-start gap-3 text-xs bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 py-2">
+                          <span className="text-red-400 shrink-0 mt-0.5">⛔</span>
+                          <div className="min-w-0 space-y-0.5">
+                            <p className="text-zinc-200 leading-relaxed">{c.check}</p>
+                            <p className="text-zinc-600">Field: <span className="font-mono text-zinc-500">{c.resume_field}</span></p>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                ))}
+                )}
+
+                {/* Relaxed checks — were hard filters, recruiter relaxed them via include */}
+                {softChecks.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                      ✅ Relaxed Criteria <span className="text-green-600 font-normal">(preference, not a gate — relaxed by your include)</span>
+                    </p>
+                    <div className="space-y-1.5">
+                      {softChecks.map((c, i) => (
+                        <div key={i} className="flex items-start gap-3 text-xs bg-green-950/20 border border-green-800/40 rounded-lg px-3 py-2">
+                          <span className="text-green-500 shrink-0 mt-0.5">✅</span>
+                          <div className="min-w-0 space-y-0.5">
+                            <p className="text-zinc-300 leading-relaxed">{c.check}</p>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="text-zinc-600">Field: <span className="font-mono text-zinc-500">{c.resume_field}</span></p>
+                              <span className="text-[9px] bg-green-950/60 text-green-400 border border-green-800/50 px-1.5 py-0.5 rounded font-semibold uppercase tracking-wide">
+                                No longer a hard filter
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {p0Weights.length > 0 && (
             <div className="space-y-2">
@@ -652,6 +842,112 @@ function ActiveRubricPanel({ config }: { config: Record<string, unknown> | null 
                     <div className="min-w-0 space-y-0.5">
                       <p className="text-zinc-300 leading-relaxed">{f.check}</p>
                       <p className="text-zinc-600">Field: <span className="font-mono text-zinc-500">{f.resume_field}</span></p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── SkippedResumesPanel ───────────────────────────────────────────────────────
+// Surfaces resumes that were not included in the full evaluation, and explains
+// exactly why — either the PDF was unreadable, or the batch exceeded the cap.
+
+function SkippedResumesPanel({ skipped }: { skipped: SkippedInfo }) {
+  const [open, setOpen] = useState(false);
+
+  const unreadable = skipped.unreadable ?? [];
+  const sampledOut = skipped.sampled_out ?? [];
+  const modelDropped = skipped.model_dropped ?? [];
+  const total = unreadable.length + sampledOut.length + modelDropped.length;
+  if (total === 0) return null;
+
+  return (
+    <div className="border border-zinc-700 rounded-xl overflow-hidden">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 bg-zinc-900 hover:bg-zinc-800/80 transition-colors text-left"
+      >
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-xs font-semibold text-zinc-300">⚠️ Resumes Not Evaluated</span>
+          <span className="text-[10px] font-mono bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-full">
+            {total} skipped
+            {unreadable.length > 0 && ` · ${unreadable.length} unreadable`}
+            {sampledOut.length > 0 && ` · ${sampledOut.length} over cap`}
+            {modelDropped.length > 0 && ` · ${modelDropped.length} dropped by model`}
+          </span>
+        </div>
+        <span className="text-zinc-600 text-xs">{open ? "▲" : "▼"}</span>
+      </button>
+
+      {open && (
+        <div className="px-4 py-4 bg-zinc-950/80 border-t border-zinc-800/60 space-y-5">
+          <p className="text-xs text-zinc-500 leading-relaxed">
+            These resumes were not scored in the full evaluation. See reason below.
+            Fix unreadable PDFs by re-uploading a text-based PDF (not a scanned image).
+            Model-dropped resumes can be retried by re-running the full evaluation.
+          </p>
+
+          {unreadable.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-red-500/80">
+                🚫 Unreadable PDFs <span className="text-zinc-600 font-normal">(text extraction failed)</span>
+              </p>
+              <div className="space-y-1.5">
+                {unreadable.map((r, i) => (
+                  <div key={i} className="flex items-start gap-3 bg-red-950/20 border border-red-900/30 rounded-lg px-3 py-2.5">
+                    <span className="text-red-400 shrink-0 mt-0.5 text-sm">✕</span>
+                    <div className="min-w-0 space-y-0.5">
+                      <p className="text-sm text-zinc-200 font-mono truncate">{r.file_name}</p>
+                      <p className="text-xs text-zinc-500 leading-relaxed">{r.reason}</p>
+                      {r.quality && (
+                        <p className="text-[10px] text-zinc-600 font-mono">
+                          quality: {JSON.stringify(r.quality)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {modelDropped.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-orange-500/80">
+                🤖 Dropped by Model <span className="text-zinc-600 font-normal">(sent to AI but missing from response)</span>
+              </p>
+              <div className="space-y-1.5">
+                {modelDropped.map((r, i) => (
+                  <div key={i} className="flex items-start gap-3 bg-orange-950/20 border border-orange-900/30 rounded-lg px-3 py-2.5">
+                    <span className="text-orange-400 shrink-0 mt-0.5 text-sm">?</span>
+                    <div className="min-w-0 space-y-0.5">
+                      <p className="text-sm text-zinc-200 font-mono truncate">{r.file_name}</p>
+                      <p className="text-xs text-zinc-500 leading-relaxed">{r.reason}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {sampledOut.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                📦 Over Cap <span className="text-zinc-600 font-normal">(excluded by representative sampling)</span>
+              </p>
+              <div className="space-y-1.5">
+                {sampledOut.map((r, i) => (
+                  <div key={i} className="flex items-start gap-3 bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 py-2.5">
+                    <span className="text-zinc-500 shrink-0 mt-0.5 text-sm">–</span>
+                    <div className="min-w-0 space-y-0.5">
+                      <p className="text-sm text-zinc-300 font-mono truncate">{r.file_name}</p>
+                      <p className="text-xs text-zinc-500 leading-relaxed">{r.reason}</p>
                     </div>
                   </div>
                 ))}

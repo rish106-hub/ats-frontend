@@ -67,9 +67,22 @@ export interface CandidateResult {
   confidence?: "high" | "medium" | "low";
 }
 
+export interface SkippedEntry {
+  file_name: string;
+  reason: string;
+  quality?: any;
+}
+
+export interface SkippedInfo {
+  unreadable: SkippedEntry[];
+  sampled_out: SkippedEntry[];
+  model_dropped: SkippedEntry[];
+}
+
 export interface PreviewResults {
   results: CandidateResult[];
   summary: { total_evaluated: number; p0_count: number; baseline_count: number; reject_count: number };
+  _skipped?: SkippedInfo;
 }
 
 export interface CandidateFeedback {
@@ -79,13 +92,22 @@ export interface CandidateFeedback {
 }
 
 export interface ResumeLens {
-  ownership_arc: string;
-  domain_proximity: string;
-  craft_signals: string;
-  experience_profile: string;
-  trajectory: string;
-  hm_flag: string;
-  red_flag_notes: string;
+  file_name?: string;
+  ownership_arc?: string;
+  domain_proximity?: string;
+  craft_signals?: string;
+  experience_profile?: string;
+  trajectory?: string;
+  hm_flag?: string;
+  red_flag_notes?: string;
+}
+
+export interface LessonLearned {
+  candidate?: string;
+  action?: string;
+  reason_given?: string;
+  lesson?: string;
+  rubric_change?: string;
 }
 
 export interface ResumeListItem {
@@ -96,13 +118,6 @@ export interface ResumeListItem {
   quality: any;
   keyword_score: number;
   resume_lens?: ResumeLens | null;
-}
-
-export interface ResumeDetail {
-  file_name: string;
-  raw_text: string | null;
-  resume_json: any;
-  resume_lens: ResumeLens | null;
 }
 
 export interface Session {
@@ -201,7 +216,4 @@ export const api = {
 
   listResumes: (id: string) =>
     req<ResumeListItem[]>(`/api/sessions/${id}/resumes`),
-
-  getResumeDetail: (sessionId: string, fileName: string) =>
-    req<ResumeDetail>(`/api/sessions/${sessionId}/resumes/${encodeURIComponent(fileName)}`),
 };

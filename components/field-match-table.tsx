@@ -10,31 +10,43 @@ import { ResumeDrawer } from "@/components/resume-drawer";
 // ── constants ─────────────────────────────────────────────────────────────────
 
 const MATCH_STYLE = {
-  pass: { icon: "✅", label: "Pass", cls: "text-green-400", bg: "bg-green-950/30", border: "border-l-green-500" },
-  fail: { icon: "❌", label: "Fail", cls: "text-red-400", bg: "bg-red-950/30", border: "border-l-red-500" },
+  pass:    { icon: "✅", label: "Pass",    cls: "text-green-400",  bg: "bg-green-950/30",  border: "border-l-green-500"  },
+  fail:    { icon: "❌", label: "Fail",    cls: "text-red-400",    bg: "bg-red-950/30",    border: "border-l-red-500"    },
   partial: { icon: "⚠️", label: "Partial", cls: "text-yellow-400", bg: "bg-yellow-950/20", border: "border-l-yellow-500" },
 };
 
 const CLASS_STYLE: Record<string, string> = {
-  P0: "bg-emerald-900/60 text-emerald-200 border border-emerald-700/50",
+  P0:       "bg-emerald-900/60 text-emerald-200 border border-emerald-700/50",
   Baseline: "bg-blue-900/60 text-blue-200 border border-blue-700/50",
-  Reject: "bg-red-950/60 text-red-300 border border-red-800/50",
+  Reject:   "bg-red-950/60 text-red-300 border border-red-800/50",
 };
-
-const SCORE_BAR_COLOR = (score: number) =>
-  score >= 75 ? "bg-emerald-500" :
-  score >= 50 ? "bg-blue-500" :
-  score >= 25 ? "bg-yellow-500" : "bg-red-600";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-/** Truncate a string to a max len, appending "…" if trimmed. */
+/**
+ * Safely coerce any value to a plain string.
+ * Gemini occasionally returns structured objects (e.g. {signal: "...", evidence_fields: [...]})
+ * instead of plain strings. This prevents React "Objects are not valid as a React child" crashes.
+ */
+function toStr(val: unknown): string {
+  if (typeof val === "string") return val;
+  if (val === null || val === undefined) return "";
+  if (typeof val === "object") {
+    const obj = val as Record<string, unknown>;
+    // Try common field names in order of preference
+    for (const key of ["signal", "check", "text", "description", "value", "label"]) {
+      if (typeof obj[key] === "string" && (obj[key] as string).trim()) return obj[key] as string;
+    }
+    return JSON.stringify(val);
+  }
+  return String(val);
+}
+
 function truncate(str: string, max = 120): string {
   if (!str || str.length <= max) return str;
   return str.slice(0, max).trimEnd() + "…";
 }
 
-/** Render a long text in a compact expandable block. */
 function ExpandableText({ text, maxLen = 120, className = "" }: { text: string; maxLen?: number; className?: string }) {
   const [expanded, setExpanded] = useState(false);
   if (!text) return null;
@@ -54,86 +66,57 @@ function ExpandableText({ text, maxLen = 120, className = "" }: { text: string; 
   );
 }
 
-// ── score ring ────────────────────────────────────────────────────────────────
-
-function ScoreRing({ score }: { score: number }) {
-  const color =
-    score >= 75 ? "text-emerald-400 stroke-emerald-500" :
-    score >= 50 ? "text-blue-400 stroke-blue-500" :
-    score >= 25 ? "text-yellow-400 stroke-yellow-500" : "text-red-400 stroke-red-600";
-  const r = 14;
-  const circ = 2 * Math.PI * r;
-  const dash = (score / 100) * circ;
-  return (
-    <div className="relative flex items-center justify-center w-10 h-10 shrink-0">
-      <svg className="absolute inset-0 -rotate-90" width="40" height="40" viewBox="0 0 40 40">
-        <circle cx="20" cy="20" r={r} fill="none" stroke="currentColor" strokeWidth="3" className="text-zinc-800" />
-        <circle
-          cx="20" cy="20" r={r} fill="none" strokeWidth="3"
-          strokeDasharray={`${dash} ${circ}`}
-          strokeLinecap="round"
-          className={color}
-        />
-      </svg>
-      <span className={`text-[10px] font-mono font-bold ${color.split(" ")[0]}`}>{score}</span>
-    </div>
-  );
-}
-
 // ── field match row ───────────────────────────────────────────────────────────
 
-function FieldMatchRow({ fm }: { fm: { field: string; value_from_resume: string; criteria_checked: string; match: "pass" | "fail" | "partial"; note: string } }) {
+function FieldMatchRow({ fm }: { fm: { field: unknown; value_from_resume: unknown; criteria_checked: unknown; match: "pass" | "fail" | "partial"; note: unknown } }) {
   const m = MATCH_STYLE[fm.match] ?? { icon: "—", label: "—", cls: "text-zinc-400", bg: "bg-zinc-900/40", border: "border-l-zinc-600" };
   const [open, setOpen] = useState(false);
 
+  const field = toStr(fm.field);
+  const criteriaChecked = toStr(fm.criteria_checked);
+  const valueFromResume = toStr(fm.value_from_resume);
+  const note = toStr(fm.note);
+
   return (
     <div className={`border-l-2 ${m.border} ${m.bg} rounded-r-md overflow-hidden`}>
-      {/* header: field pill + match badge + toggle */}
       <button
         onClick={() => setOpen(v => !v)}
         className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-white/5 transition-colors gap-2"
       >
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-[10px] font-mono font-semibold uppercase tracking-wider bg-zinc-800/80 text-zinc-300 px-2 py-0.5 rounded shrink-0">
-            {fm.field}
+            {field}
           </span>
           <span className={`text-[11px] font-semibold ${m.cls} flex items-center gap-1 shrink-0`}>
             {m.icon} {m.label}
           </span>
-          {!open && fm.criteria_checked && (
+          {!open && criteriaChecked && (
             <span className="text-[11px] text-zinc-500 truncate min-w-0">
-              {truncate(fm.criteria_checked, 60)}
+              {truncate(criteriaChecked, 60)}
             </span>
           )}
         </div>
         <span className="text-zinc-600 text-[10px] shrink-0">{open ? "▲" : "▼"}</span>
       </button>
 
-      {/* expanded detail */}
       {open && (
         <div className="px-3 pb-3 space-y-2">
-          {fm.criteria_checked && (
+          {criteriaChecked && (
             <div className="flex gap-2">
               <span className="text-[10px] text-zinc-500 font-semibold uppercase tracking-wide shrink-0 pt-0.5 w-20">Criteria</span>
-              <p className="text-xs text-zinc-300 leading-relaxed">
-                <ExpandableText text={fm.criteria_checked} maxLen={200} />
-              </p>
+              <p className="text-xs text-zinc-300 leading-relaxed"><ExpandableText text={criteriaChecked} maxLen={200} /></p>
             </div>
           )}
-          {fm.value_from_resume && (
+          {valueFromResume && (
             <div className="flex gap-2">
               <span className="text-[10px] text-zinc-500 font-semibold uppercase tracking-wide shrink-0 pt-0.5 w-20">Resume</span>
-              <p className="text-xs text-zinc-400 leading-relaxed">
-                <ExpandableText text={fm.value_from_resume} maxLen={200} />
-              </p>
+              <p className="text-xs text-zinc-400 leading-relaxed"><ExpandableText text={valueFromResume} maxLen={200} /></p>
             </div>
           )}
-          {fm.note && (
+          {note && (
             <div className="flex gap-2">
               <span className="text-[10px] text-zinc-500 font-semibold uppercase tracking-wide shrink-0 pt-0.5 w-20">Note</span>
-              <p className={`text-xs leading-relaxed italic ${m.cls} opacity-80`}>
-                <ExpandableText text={fm.note} maxLen={200} />
-              </p>
+              <p className={`text-xs leading-relaxed italic ${m.cls} opacity-80`}><ExpandableText text={note} maxLen={200} /></p>
             </div>
           )}
         </div>
@@ -142,33 +125,14 @@ function FieldMatchRow({ fm }: { fm: { field: string; value_from_resume: string;
   );
 }
 
-// ── P0 signal bar ─────────────────────────────────────────────────────────────
+// ── P0 signal list (label only, no scores) ────────────────────────────────────
 
-function P0Bar({ m, index }: { m: P0Match | string; index: number }) {
-  const label = typeof m === "string" ? m : m.signal;
-  const score = typeof m === "string" ? 100 : (m.score ?? 0);
-  const barColor = SCORE_BAR_COLOR(score);
-  const textColor =
-    score >= 75 ? "text-emerald-400" :
-    score >= 50 ? "text-blue-400" :
-    score >= 25 ? "text-yellow-400" : "text-red-400";
-
+function P0Signal({ m }: { m: P0Match | string | unknown }) {
+  const label = toStr(typeof m === "object" && m !== null && "signal" in (m as object) ? (m as P0Match).signal : m as string);
   return (
-    <div key={index} className="space-y-1">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs text-zinc-300 leading-tight flex-1 min-w-0">
-          <ExpandableText text={label} maxLen={80} />
-        </span>
-        <span className={`text-xs font-mono font-bold shrink-0 ${textColor}`}>
-          {score > 0 ? `+${score}` : "—"}
-        </span>
-      </div>
-      <div className="h-1.5 bg-zinc-800/80 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-500 ${barColor}`}
-          style={{ width: score > 0 ? `${Math.min(score, 100)}%` : "3px" }}
-        />
-      </div>
+    <div className="flex items-start gap-2 text-xs">
+      <span className="text-emerald-500 shrink-0 mt-0.5">✦</span>
+      <span className="text-zinc-300 leading-relaxed"><ExpandableText text={label} maxLen={120} /></span>
     </div>
   );
 }
@@ -185,9 +149,9 @@ function CandidateCard({ c, rank, onFeedback, onViewResume }: {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackAction, setFeedbackAction] = useState("should_pass");
   const [feedbackReason, setFeedbackReason] = useState("");
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
 
   const style = CLASS_STYLE[c.classification] ?? "bg-zinc-800 text-zinc-200 border border-zinc-700";
-  const hasFieldMatches = c.field_matches && c.field_matches.length > 0;
 
   function handleSubmitFeedback(e: React.MouseEvent) {
     e.stopPropagation();
@@ -195,100 +159,105 @@ function CandidateCard({ c, rank, onFeedback, onViewResume }: {
     onFeedback({ file_name: c.candidate_name, action: feedbackAction, reason: feedbackReason });
     setFeedbackOpen(false);
     setFeedbackReason("");
+    setFeedbackSubmitted(true);
   }
 
   return (
     <div className="border border-zinc-800 rounded-xl overflow-hidden shadow-sm">
-      {/* card header — div not button so we can nest interactive elements */}
+      {/* card header — div so nested buttons work */}
       <div
         onClick={() => setOpen(v => !v)}
         className="w-full flex items-center justify-between px-4 py-3.5 bg-zinc-900 hover:bg-zinc-800/80 transition-colors cursor-pointer gap-3 select-none"
       >
-        {/* left: rank + name + badges */}
-        <div className="flex items-center gap-3 min-w-0">
+        {/* left: rank · name · classification · badges */}
+        <div className="flex items-center gap-2 min-w-0 flex-wrap">
           <span className="text-[10px] font-mono text-zinc-600 shrink-0">#{rank}</span>
+
           <span className="font-semibold text-sm text-zinc-100 truncate">{c.candidate_name || "Unknown"}</span>
-          {onViewResume && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onViewResume(c); }}
-              className="flex items-center gap-1 text-[10px] font-semibold bg-zinc-800 hover:bg-blue-900/60 text-zinc-400 hover:text-blue-300 border border-zinc-700 hover:border-blue-700 px-2 py-1 rounded transition-colors shrink-0"
-              title="View resume PDF"
-            >
-              📄 Resume
-            </button>
-          )}
+
           <span className={`text-xs px-2 py-0.5 rounded-full font-semibold shrink-0 ${style}`}>
             {c.classification}
           </span>
+
           {c.confidence && c.confidence !== "high" && (
-            <Badge
-              variant="outline"
-              className={`text-[9px] h-4 px-1.5 shrink-0 ${c.confidence === "low" ? "border-red-600 text-red-400" : "border-yellow-600 text-yellow-400"}`}
-            >
-              {c.confidence === "low" ? "⚠️ low" : "~ medium"} confidence
+            <Badge variant="outline" className={`text-[9px] h-4 px-1.5 shrink-0 ${c.confidence === "low" ? "border-red-600 text-red-400" : "border-yellow-600 text-yellow-400"}`}>
+              {c.confidence === "low" ? "⚠️ low" : "~ mid"} confidence
             </Badge>
           )}
+
           {!c.baseline_pass && (
             <span className="text-[10px] bg-red-950/50 border border-red-800/50 text-red-400 px-1.5 py-0.5 rounded shrink-0">
               Baseline fail
             </span>
           )}
+
+          {/* View Resume button */}
+          {onViewResume && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onViewResume(c); }}
+              className="flex items-center gap-1 text-[10px] font-semibold bg-zinc-800 hover:bg-blue-900/60 text-zinc-400 hover:text-blue-300 border border-zinc-700 hover:border-blue-700 px-2 py-0.5 rounded transition-colors shrink-0"
+              title="View resume PDF"
+            >
+              📄 Resume
+            </button>
+          )}
+
+          {/* Disagree button */}
           {onFeedback && (
-            <div className="relative isolate z-10">
-              <span 
-                onClick={(e) => { e.stopPropagation(); setFeedbackOpen(v => !v); }}
-                className="text-[10px] uppercase font-semibold text-zinc-500 hover:text-blue-400 hover:underline px-2 py-1 cursor-pointer shrink-0"
-              >
-                Disagree?
-              </span>
-            </div>
+            <button
+              onClick={(e) => { e.stopPropagation(); setFeedbackOpen(v => !v); }}
+              className={`text-[10px] font-semibold px-2 py-0.5 rounded border transition-colors shrink-0 ${
+                feedbackSubmitted
+                  ? "bg-green-950/40 border-green-800/50 text-green-400"
+                  : "bg-zinc-800 hover:bg-orange-900/40 text-zinc-500 hover:text-orange-300 border-zinc-700 hover:border-orange-700"
+              }`}
+              title="Disagree with this evaluation"
+            >
+              {feedbackSubmitted ? "✓ Feedback sent" : "👎 Disagree"}
+            </button>
           )}
         </div>
 
-        {/* right: score ring + p0 score + toggle */}
-        <div className="flex items-center gap-4 shrink-0">
-          <div className="text-right">
-            <div className="text-[10px] text-zinc-500">P0</div>
-            <div className="text-xs font-mono font-bold text-zinc-300">{c.p0_score}</div>
-          </div>
-          <ScoreRing score={c.overall_score} />
-          <span className="text-zinc-600 text-xs">{open ? "▲" : "▼"}</span>
-        </div>
+        <span className="text-zinc-600 text-xs shrink-0">{open ? "▲" : "▼"}</span>
       </div>
 
       {/* expanded body */}
       {open && (
         <div className="bg-zinc-950/80 px-4 py-4 space-y-5 border-t border-zinc-800/60">
 
-          {/* Feedback Form UI */}
+          {/* feedback form */}
           {feedbackOpen && (
-            <div className="bg-blue-950/20 border border-blue-900/50 rounded-lg p-4 space-y-4 shadow-inner">
-              <div>
-                <p className="text-xs font-semibold text-blue-300 mb-2">Manual Intervention Required</p>
-                <div className="flex gap-2">
-                  <select 
-                    title="action"
-                    className="bg-zinc-950 border border-zinc-800 text-zinc-300 text-xs rounded-md px-2 py-1.5 focus:border-blue-500 focus:outline-none"
-                    value={feedbackAction}
-                    onChange={(e) => setFeedbackAction(e.target.value)}
-                  >
-                    <option value="should_pass">This candidate should PASS (they have the required skills)</option>
-                    <option value="should_fail">This candidate should FAIL (they have a red flag or lack skills)</option>
-                    <option value="p0_booster">This candidate deserves a P0 Boost</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <Textarea
-                  placeholder="Explain exactly why. E.g., 'They have 5 years of startup experience which is awesome.' This feedback directly trains the AI's strict baseline rubric."
-                  className="bg-zinc-950 border-zinc-800 text-zinc-300 text-xs min-h-[60px]"
-                  value={feedbackReason}
-                  onChange={(e) => setFeedbackReason(e.target.value)}
-                />
-              </div>
+            <div className="bg-blue-950/20 border border-blue-900/50 rounded-lg p-4 space-y-3 shadow-inner">
+              <p className="text-xs font-semibold text-blue-300">
+                Tell the AI what it got wrong — this updates the rubric and immediately re-evaluates.
+              </p>
+              <select
+                title="action"
+                className="w-full bg-zinc-950 border border-zinc-800 text-zinc-300 text-xs rounded-md px-2 py-1.5 focus:border-blue-500 focus:outline-none"
+                value={feedbackAction}
+                onChange={(e) => setFeedbackAction(e.target.value)}
+              >
+                <option value="should_pass">Should PASS — they have what's needed</option>
+                <option value="should_fail">Should FAIL — they have a red flag or lack skills</option>
+                <option value="p0_booster">Deserves a P0 boost</option>
+              </select>
+              <Textarea
+                placeholder="Explain why, e.g. 'They have 3 years B2B SaaS experience which is exactly what we need.' This directly updates the AI rubric for all candidates."
+                className="bg-zinc-950 border-zinc-800 text-zinc-300 text-xs min-h-[70px] resize-none"
+                value={feedbackReason}
+                onChange={(e) => setFeedbackReason(e.target.value)}
+              />
               <div className="flex gap-2 justify-end">
-                <Button variant="ghost" className="h-7 text-[10px] text-zinc-500 hover:text-zinc-300" onClick={() => setFeedbackOpen(false)}>Cancel</Button>
-                <Button className="h-7 text-[10px] bg-blue-600 hover:bg-blue-500 text-white" disabled={!feedbackReason.trim()} onClick={handleSubmitFeedback}>Add to Criteria Loop</Button>
+                <Button variant="ghost" className="h-7 text-[10px] text-zinc-500 hover:text-zinc-300" onClick={(e) => { e.stopPropagation(); setFeedbackOpen(false); }}>
+                  Cancel
+                </Button>
+                <Button
+                  className="h-7 text-[10px] bg-blue-600 hover:bg-blue-500 text-white"
+                  disabled={!feedbackReason.trim()}
+                  onClick={handleSubmitFeedback}
+                >
+                  Submit & Re-evaluate
+                </Button>
               </div>
             </div>
           )}
@@ -298,7 +267,7 @@ function CandidateCard({ c, rank, onFeedback, onViewResume }: {
             <div className="flex gap-3">
               <span className="text-zinc-600 mt-0.5 shrink-0">💬</span>
               <p className="text-xs text-zinc-400 leading-relaxed italic">
-                <ExpandableText text={c.reasoning} maxLen={300} />
+                <ExpandableText text={toStr(c.reasoning)} maxLen={300} />
               </p>
             </div>
           )}
@@ -308,7 +277,7 @@ function CandidateCard({ c, rank, onFeedback, onViewResume }: {
             <div className="bg-red-950/30 border border-red-900/40 rounded-lg p-3 space-y-1">
               <p className="text-[10px] font-semibold text-red-400 uppercase tracking-wider mb-2">⛔ Baseline Failures</p>
               {c.baseline_failures.map((f, i) => (
-                <p key={i} className="text-xs text-red-300 leading-relaxed">• <ExpandableText text={f} maxLen={150} /></p>
+                <p key={i} className="text-xs text-red-300 leading-relaxed">• <ExpandableText text={toStr(f)} maxLen={150} /></p>
               ))}
             </div>
           )}
@@ -318,17 +287,17 @@ function CandidateCard({ c, rank, onFeedback, onViewResume }: {
             <div className="bg-orange-950/20 border border-orange-900/30 rounded-lg p-3 space-y-1">
               <p className="text-[10px] font-semibold text-orange-400 uppercase tracking-wider mb-2">🚩 Red Flags</p>
               {c.red_flags_found.map((f, i) => (
-                <p key={i} className="text-xs text-orange-300 leading-relaxed">• <ExpandableText text={f} maxLen={150} /></p>
+                <p key={i} className="text-xs text-orange-300 leading-relaxed">• <ExpandableText text={toStr(f)} maxLen={150} /></p>
               ))}
             </div>
           )}
 
-          {/* P0 signals */}
+          {/* P0 signals matched */}
           {c.p0_matches && c.p0_matches.length > 0 && (
-            <div className="space-y-3">
-              <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">🎯 P0 Signals</p>
-              <div className="space-y-2.5">
-                {c.p0_matches.map((m, i) => <P0Bar key={i} m={m} index={i} />)}
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">🎯 P0 Signals Matched</p>
+              <div className="space-y-1.5">
+                {c.p0_matches.map((m, i) => <P0Signal key={i} m={m} />)}
               </div>
             </div>
           )}
@@ -338,13 +307,13 @@ function CandidateCard({ c, rank, onFeedback, onViewResume }: {
             <div className="space-y-1.5">
               <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">✨ Extra Parameters Matched</p>
               {c.extra_param_matches.map((m, i) => (
-                <p key={i} className="text-xs text-zinc-300">• <ExpandableText text={m} maxLen={120} /></p>
+                <p key={i} className="text-xs text-zinc-300">• <ExpandableText text={toStr(m)} maxLen={120} /></p>
               ))}
             </div>
           )}
 
-          {/* field-level breakdown (preview only) */}
-          {hasFieldMatches && (
+          {/* field-level breakdown */}
+          {c.field_matches && c.field_matches.length > 0 && (
             <div className="space-y-2">
               <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">📋 Field-Level Breakdown</p>
               <div className="space-y-1.5">
@@ -375,63 +344,70 @@ export function FieldMatchTable({
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerCandidate, setDrawerCandidate] = useState<CandidateResult | null>(null);
-  const [drawerFileName, setDrawerFileName] = useState<string>("");
+  const [drawerFileName, setDrawerFileName] = useState("");
   const [drawerLens, setDrawerLens] = useState<ResumeLens | null>(null);
 
-  // Build name → file_name lookup from the resumes list.
-  // Matches on resume_json.name first, falls back to file_name stem.
+  // name → file_name lookup
   const fileNameByCandidate = useMemo(() => {
     const map: Record<string, string> = {};
     for (const r of resumes) {
-      const parsedName: string = r.resume_json?.name || "";
-      const stemName = r.file_name.replace(/\.pdf$/i, "").replace(/[_-]/g, " ").trim();
-      if (parsedName) map[parsedName.toLowerCase()] = r.file_name;
-      map[stemName.toLowerCase()] = r.file_name;
+      const parsedName = (r.resume_json?.name || "").toLowerCase();
+      const stem = r.file_name.replace(/\.pdf$/i, "").replace(/[_-]/g, " ").trim().toLowerCase();
+      if (parsedName) map[parsedName] = r.file_name;
+      map[stem] = r.file_name;
     }
     return map;
   }, [resumes]);
 
-  function resolveFileName(candidateName: string): string {
-    const key = candidateName.toLowerCase();
-    // exact match
+  function resolveFileName(name: string): string {
+    const key = name.toLowerCase();
     if (fileNameByCandidate[key]) return fileNameByCandidate[key];
-    // partial match — candidate name appears in a known key or vice versa
     for (const [k, v] of Object.entries(fileNameByCandidate)) {
       if (k.includes(key) || key.includes(k)) return v;
     }
-    return candidateName; // last resort — use name as-is
+    return name;
   }
 
   function handleViewResume(c: CandidateResult) {
-    console.log("[handleViewResume] called for:", c.candidate_name, "sessionId:", sessionId, "resumes:", resumes.length);
-    if (!sessionId) {
-      console.warn("[handleViewResume] sessionId is missing — drawer will not open");
-      return;
-    }
+    if (!sessionId) return;
     const fileName = resolveFileName(c.candidate_name || "");
-    console.log("[handleViewResume] resolved fileName:", fileName);
-    // Grab lens notes from the resumes list if available
-    const matchedResume = resumes.find((r) => r.file_name === fileName);
+    const matched = resumes.find((r) => r.file_name === fileName);
     setDrawerCandidate(c);
     setDrawerFileName(fileName);
-    setDrawerLens(matchedResume?.resume_lens ?? null);
+    setDrawerLens(matched?.resume_lens ?? null);
     setDrawerOpen(true);
+  }
+
+  // Wrap onFeedback so that file_name is always the *actual* resolved filename,
+  // not the candidate_name string that CandidateCard has access to.
+  // CandidateCard passes c.candidate_name as file_name — this wrapper intercepts
+  // that and replaces it with the correctly resolved file path.
+  function makeFeedbackHandler(candidateName: string) {
+    if (!onFeedback) return undefined;
+    return (fb: CandidateFeedback) => {
+      const resolvedFileName = resolveFileName(candidateName);
+      onFeedback({ ...fb, file_name: resolvedFileName });
+    };
   }
 
   if (!candidates || candidates.length === 0) {
     return <p className="text-zinc-500 text-sm">No candidates to display.</p>;
   }
 
+  // Detect all-reject batches so we can surface a clear message instead of
+  // leaving the recruiter confused about why there are 0 P0s and 0 Baselines.
+  const allReject = summary.p0_count === 0 && summary.baseline_count === 0 && summary.reject_count > 0;
+
   return (
     <>
       <div className="space-y-4">
-        {/* summary stat bar */}
+        {/* summary counts */}
         <div className="grid grid-cols-4 gap-3">
           {[
-            { label: "Evaluated", value: summary.total_evaluated, cls: "text-zinc-100", ring: "border-zinc-700" },
-            { label: "P0", value: summary.p0_count, cls: "text-emerald-400", ring: "border-emerald-800" },
-            { label: "Baseline", value: summary.baseline_count, cls: "text-blue-400", ring: "border-blue-800" },
-            { label: "Reject", value: summary.reject_count, cls: "text-red-400", ring: "border-red-900" },
+            { label: "Evaluated", value: summary.total_evaluated, cls: "text-zinc-100",    ring: "border-zinc-700"    },
+            { label: "P0",        value: summary.p0_count,        cls: "text-emerald-400", ring: "border-emerald-800" },
+            { label: "Baseline",  value: summary.baseline_count,  cls: "text-blue-400",    ring: "border-blue-800"    },
+            { label: "Reject",    value: summary.reject_count,    cls: "text-red-400",     ring: "border-red-900"     },
           ].map(({ label, value, cls, ring }) => (
             <div key={label} className={`bg-zinc-900 border ${ring} rounded-xl p-4 text-center`}>
               <div className={`text-3xl font-bold font-mono ${cls}`}>{value}</div>
@@ -440,21 +416,36 @@ export function FieldMatchTable({
           ))}
         </div>
 
-        {/* ranked candidate list */}
+        {/* all-reject message: helps the recruiter understand this is correct, not a bug */}
+        {allReject && (
+          <div className="bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 flex items-start gap-3">
+            <span className="text-zinc-500 shrink-0 mt-0.5">ℹ️</span>
+            <div className="space-y-0.5">
+              <p className="text-xs font-semibold text-zinc-300">None of these candidates meet the baseline</p>
+              <p className="text-xs text-zinc-500 leading-relaxed">
+                The AI is applying your criteria as absolute thresholds — not picking the best from this batch.
+                Try uploading stronger candidates, or use the include/exclude fields to relax a criterion
+                that may be filtering too aggressively.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* candidate list */}
         <div className="space-y-2">
           {candidates.map((c, i) => (
             <CandidateCard
               key={i}
               c={c}
               rank={i + 1}
-              onFeedback={onFeedback}
+              onFeedback={makeFeedbackHandler(c.candidate_name || "")}
               onViewResume={sessionId ? handleViewResume : undefined}
             />
           ))}
         </div>
       </div>
 
-      {/* resume drawer */}
+      {/* resume drawer — rendered outside the list so it overlays everything */}
       {drawerCandidate && sessionId && (
         <ResumeDrawer
           open={drawerOpen}
