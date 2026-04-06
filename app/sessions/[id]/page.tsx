@@ -407,10 +407,10 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs text-amber-500 mb-1.5 flex items-center gap-1">
-                    <span>⚙︎</span> Update baseline filters…
+                    <span>⚙︎</span> Add / change hard filters (baseline)
                   </label>
                   <Textarea
-                    placeholder="e.g. Must have tier-1 Indian university education; remove the consulting requirement"
+                    placeholder="e.g. Require tier-1 Indian university (IIT/IIM/BITS); remove the consulting requirement; make product experience a hard reject"
                     value={updateBaselineText}
                     onChange={(e) => setUpdateBaselineText(e.target.value)}
                     rows={3}
@@ -419,10 +419,10 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
                 </div>
                 <div>
                   <label className="text-xs text-violet-400 mb-1.5 flex items-center gap-1">
-                    <span>⚡</span> Update P0 signals…
+                    <span>⚡</span> Add / change P0 signals (scoring weights)
                   </label>
                   <Textarea
-                    placeholder="e.g. Give higher weight to 0-to-1 builders; add a signal for scaling past 1M users"
+                    placeholder="e.g. Raise weight for 0-to-1 builders to 40%; add a signal for scaling past 1M users; lower education weight"
                     value={updateP0Text}
                     onChange={(e) => setUpdateP0Text(e.target.value)}
                     rows={3}
