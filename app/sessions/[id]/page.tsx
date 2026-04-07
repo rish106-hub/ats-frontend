@@ -473,7 +473,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
                 variant="outline"
                 className="border-zinc-700 text-zinc-400 hover:bg-zinc-800"
               >
-                {busy ? "Loading…" : "Load Different Resumes"}
+                {busy ? "Loading…" : "+ Load 2 More Resumes"}
               </Button>
               <Button
                 onClick={handleAccept}
@@ -496,6 +496,9 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
                 Back to sessions
               </Button>
             </div>
+            {/* audit: the exact rubric + final_evaluation_prompt CALL_3 was run against */}
+            <RubricAuditPanel config={session.final_config ?? session.synthesized_config} />
+
             <FieldMatchTable results={session.full_results} sessionId={id} resumes={resumes} />
 
             {/* skipped resumes — unreadable PDFs or resumes excluded by cap */}
@@ -909,6 +912,83 @@ function ActiveRubricPanel({ config }: { config: Record<string, unknown> | null 
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── RubricAuditPanel ──────────────────────────────────────────────────────────
+// Shows the exact rubric + final_evaluation_prompt that CALL_3 was run against
+// so the recruiter can verify their updates actually propagated through synthesis.
+
+function RubricAuditPanel({ config }: { config: any }) {
+  const [open, setOpen] = useState(false);
+  if (!config) return null;
+  const rubric = config.scoring_rubric || {};
+  const baselineChecks = rubric.baseline_checks || [];
+  const p0Weights = rubric.p0_weights || [];
+  const redFlags = rubric.red_flag_checks || [];
+  const hardCount = baselineChecks.filter((c: any) => c?.reject_if_missing !== false).length;
+  const softCount = baselineChecks.length - hardCount;
+
+  return (
+    <div className="border border-zinc-800 rounded-xl overflow-hidden bg-zinc-900/40">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-zinc-800/40 text-left"
+      >
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-semibold text-zinc-200">🔍 Rubric Audit — what the model actually scored against</span>
+          <span className="text-[10px] text-zinc-500">
+            {hardCount} hard · {softCount} soft · {p0Weights.length} P0 · {redFlags.length} flags
+          </span>
+        </div>
+        <span className="text-zinc-600 text-xs">{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="px-4 py-4 space-y-5 border-t border-zinc-800 text-xs">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-2">Baseline Checks</p>
+            {baselineChecks.length === 0 && <p className="text-zinc-600 italic">none</p>}
+            {baselineChecks.map((c: any, i: number) => {
+              const hard = c?.reject_if_missing !== false;
+              return (
+                <div key={i} className="mb-1.5 flex gap-2">
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${hard ? "bg-red-950/60 text-red-300 border border-red-800/50" : "bg-blue-950/40 text-blue-300 border border-blue-800/40"}`}>
+                    {hard ? "HARD" : "soft"}
+                  </span>
+                  <span className="text-zinc-300 leading-relaxed">{c?.check}</span>
+                </div>
+              );
+            })}
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-2">P0 Weights</p>
+            {p0Weights.length === 0 && <p className="text-zinc-600 italic">none</p>}
+            {p0Weights.map((w: any, i: number) => (
+              <div key={i} className="mb-1 flex gap-2">
+                <span className="text-[10px] bg-emerald-950/50 text-emerald-300 border border-emerald-800/40 px-1.5 py-0.5 rounded shrink-0 font-mono">{w?.weight ?? 0}</span>
+                <span className="text-zinc-300">{w?.signal}</span>
+              </div>
+            ))}
+          </div>
+          {redFlags.length > 0 && (
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-2">Red Flags</p>
+              {redFlags.map((f: any, i: number) => (
+                <p key={i} className="text-orange-300 mb-1">• {f?.check}</p>
+              ))}
+            </div>
+          )}
+          {config.final_evaluation_prompt && (
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-2">Final Evaluation Prompt (verbatim — this is what the grading model sees)</p>
+              <pre className="whitespace-pre-wrap break-words bg-black/40 border border-zinc-800 rounded p-3 text-[11px] text-zinc-400 leading-relaxed max-h-96 overflow-y-auto">
+                {config.final_evaluation_prompt}
+              </pre>
             </div>
           )}
         </div>
