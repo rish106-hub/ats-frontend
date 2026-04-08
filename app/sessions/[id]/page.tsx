@@ -2,7 +2,7 @@
 
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, type Session, type CandidateFeedback, type JdAnalysis, type ResumeListItem, type LessonLearned, type SkippedInfo } from "@/lib/api";
+import { api, BASE, type Session, type CandidateFeedback, type JdAnalysis, type ResumeListItem, type LessonLearned, type SkippedInfo } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,12 +12,13 @@ import { FieldMatchTable } from "@/components/field-match-table";
 
 // ── types ──────────────────────────────────────────────────────────────────
 
-type Step = "jd" | "resumes" | "preview" | "results";
+type Step = "jd" | "resumes" | "preview" | "running" | "results";
 
 function stepFromStatus(s: Session): Step {
   if (s.status === "completed") return "results";
+  if (s.status === "running_full_eval") return "running";
   if (s.status === "preview_active") return "preview";
-  if (s.status === "resumes_uploaded" || s.status === "jd_analyzed") return "resumes";
+  if (s.status === "resumes_uploaded" || s.status === "jd_analyzed" || s.status === "rubric_ready") return "resumes";
   return "jd";
 }
 
@@ -38,10 +39,8 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   const [jdText, setJdText] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [files, setFiles] = useState<File[]>([]);
-  const [includeText, setIncludeText] = useState("");
-  const [excludeText, setExcludeText] = useState("");
-  const [updateBaselineText, setUpdateBaselineText] = useState("");
-  const [updateP0Text, setUpdateP0Text] = useState("");
+  const [instructionsText, setInstructionsText] = useState("");
+  const [exemplarPanelOpen, setExemplarPanelOpen] = useState(false);
   const [candidateFeedback, setCandidateFeedback] = useState<CandidateFeedback[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -57,11 +56,45 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
     api.listResumes(id).then(setResumes).catch((e) => console.warn("[listResumes]", e));
   }, [id]);
 
+  async function handleToggleExemplar(fileName: string, current: boolean) {
+    try {
+      const updated = await api.markExemplar(id, fileName, !current);
+      setResumes((prev) => prev.map((r) => r.file_name === fileName ? { ...r, is_exemplar: updated.is_exemplar } : r));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  async function handleRubricFromExemplars() {
+    await run(() => api.rubricFromExemplars(id, apiKey || undefined));
+  }
+
   useEffect(() => {
     refresh().catch(() => setError("Session not found.")).finally(() => setLoading(false));
   }, [refresh]);
 
   useEffect(() => { refreshResumes(); }, [refreshResumes]);
+
+  // Poll full-eval status while a background scoring job is running so the
+  // recruiter sees live progress without having to refresh.
+  useEffect(() => {
+    if (!session) return;
+    const isActive =
+      session.status === "running_full_eval" ||
+      session.full_eval_progress?.status === "running" ||
+      session.full_eval_progress?.status === "queued";
+    if (!isActive) return;
+    const interval = setInterval(() => {
+      api.getSession(id).then((s) => {
+        setSession(s);
+        setStep(stepFromStatus(s));
+        if (s.status === "completed" || s.full_eval_progress?.status === "error") {
+          clearInterval(interval);
+        }
+      }).catch(() => { /* swallow transient errors; next tick retries */ });
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [id, session?.status, session?.full_eval_progress?.status]);
 
   async function run<T>(fn: () => Promise<T>, opts?: { refreshResumesList?: boolean }): Promise<T | undefined> {
     setBusy(true);
@@ -95,23 +128,17 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
 
   function handleRefine() {
     run(
-      () => api.refinePreview(
-        id, includeText, excludeText, candidateFeedback,
-        apiKey || undefined, updateBaselineText, updateP0Text,
-      ),
+      () => api.refinePreview(id, instructionsText, candidateFeedback, apiKey || undefined),
       { refreshResumesList: true },
     ).then(() => {
-      setIncludeText("");
-      setExcludeText("");
-      setUpdateBaselineText("");
-      setUpdateP0Text("");
+      setInstructionsText("");
       setCandidateFeedback([]);
     });
   }
 
   /** Called when a candidate Disagree form is submitted — immediately re-evaluates. */
   function handleImmediateFeedback(fb: CandidateFeedback) {
-    run(() => api.refinePreview(id, "", "", [fb], apiKey || undefined, "", ""), { refreshResumesList: true });
+    run(() => api.refinePreview(id, "", [fb], apiKey || undefined), { refreshResumesList: true });
   }
 
   function handleReload() {
@@ -225,7 +252,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
         )}
 
         {/* resumes uploaded confirmation */}
-        {step === "resumes" && session.status === "resumes_uploaded" && (
+        {step === "resumes" && (session.status === "resumes_uploaded" || session.status === "rubric_ready") && (
           <Card className="bg-zinc-900 border-zinc-800">
             <CardContent className="pt-6 space-y-4">
               {/* parse summary */}
@@ -282,9 +309,77 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
                 );
               })()}
 
-              <Button onClick={handleStartPreview} disabled={busy} className="bg-white text-zinc-950 hover:bg-zinc-200">
-                {busy ? "Running preview…" : "Start Preview Loop"}
-              </Button>
+              {/* Rubric ready banner */}
+              {session.status === "rubric_ready" && (
+                <div className="rounded-lg border border-yellow-700/50 bg-yellow-950/20 px-4 py-3">
+                  <p className="text-sm text-yellow-300 font-medium">⭐ Rubric generated from ideal resumes</p>
+                  <p className="text-xs text-zinc-400 mt-0.5">The scoring rubric was reverse-engineered from your starred examples. Click "Start Preview Loop" to evaluate candidates.</p>
+                </div>
+              )}
+
+              {/* Exemplar resume list */}
+              {resumes.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                    ⭐ Mark ideal resumes — generate rubric from examples
+                  </p>
+                  <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                    {resumes.map((r) => {
+                      const q = r.quality as any;
+                      const readable = q ? ("text_extractable" in q ? !!q.text_extractable : !!q.readable) : true;
+                      return (
+                        <div key={r.file_name} className="flex items-center justify-between gap-3 rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${readable ? "bg-green-950 text-green-400" : "bg-zinc-800 text-zinc-500"}`}>
+                              {readable ? "ok" : "skip"}
+                            </span>
+                            <span className="text-xs text-zinc-300 font-mono truncate">{r.file_name}</span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <a
+                              href={`${BASE}/api/sessions/${id}/resumes/${encodeURIComponent(r.file_name)}/pdf`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title="View PDF"
+                              className="text-zinc-600 hover:text-zinc-300 text-xs transition-colors"
+                            >
+                              ↗
+                            </a>
+                          <button
+                            onClick={() => handleToggleExemplar(r.file_name, r.is_exemplar)}
+                            title={r.is_exemplar ? "Unmark as ideal" : "Mark as ideal candidate"}
+                            className={`text-base transition-colors ${r.is_exemplar ? "text-yellow-400 hover:text-yellow-300" : "text-zinc-700 hover:text-zinc-400"}`}
+                          >
+                            ★
+                          </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {(() => {
+                    const exemplarCount = resumes.filter((r) => r.is_exemplar).length;
+                    return exemplarCount >= 2 ? (
+                      <Button
+                        onClick={handleRubricFromExemplars}
+                        disabled={busy}
+                        variant="outline"
+                        className="border-yellow-700 text-yellow-400 hover:bg-yellow-950 text-xs"
+                      >
+                        {busy ? "Generating rubric…" : `⭐ Generate Rubric from ${exemplarCount} Ideal Resumes`}
+                      </Button>
+                    ) : (
+                      <p className="text-[11px] text-zinc-600">Star 2+ resumes above to unlock rubric generation from examples</p>
+                    );
+                  })()}
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <Button onClick={handleStartPreview} disabled={busy} className="bg-white text-zinc-950 hover:bg-zinc-200">
+                  {busy ? "Running preview…" : "Start Preview Loop"}
+                </Button>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -327,37 +422,94 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
             {session.extra_params_history.length > 0 && (
               <div className="space-y-2">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                  📋 Parameters Added So Far
+                  📋 Instructions so far
                 </p>
                 <div className="space-y-1.5">
-                  {session.extra_params_history.map((p, i) => (
-                    <div key={i} className="flex items-start gap-3 text-xs rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2">
-                      <span className="text-zinc-600 font-mono shrink-0">Iter {(p.iteration ?? i) + 1}</span>
-                      <div className="flex flex-wrap gap-2">
-                        {p.include && (
-                          <span className="flex items-center gap-1 bg-green-950/50 border border-green-800/50 text-green-300 px-2 py-0.5 rounded-full">
-                            <span className="text-green-500">+</span> {p.include}
-                          </span>
-                        )}
-                        {p.exclude && (
-                          <span className="flex items-center gap-1 bg-red-950/50 border border-red-800/50 text-red-300 px-2 py-0.5 rounded-full">
-                            <span className="text-red-500">−</span> {p.exclude}
-                          </span>
-                        )}
-                        {p.update_baseline && (
-                          <span className="flex items-center gap-1 bg-amber-950/50 border border-amber-800/50 text-amber-300 px-2 py-0.5 rounded-full">
-                            <span className="text-amber-500">⚙︎</span> baseline: {p.update_baseline}
-                          </span>
-                        )}
-                        {p.update_p0 && (
-                          <span className="flex items-center gap-1 bg-violet-950/50 border border-violet-800/50 text-violet-300 px-2 py-0.5 rounded-full">
-                            <span className="text-violet-400">⚡</span> P0: {p.update_p0}
-                          </span>
-                        )}
+                  {session.extra_params_history.map((p: any, i: number) => {
+                    const text = p.instructions ||
+                      [p.include && `+${p.include}`, p.exclude && `−${p.exclude}`, p.update_baseline && `baseline: ${p.update_baseline}`, p.update_p0 && `P0: ${p.update_p0}`]
+                        .filter(Boolean).join(" · ");
+                    if (!text) return null;
+                    return (
+                      <div key={i} className="flex items-start gap-3 text-xs rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2">
+                        <span className="text-zinc-600 font-mono shrink-0">#{i + 1}</span>
+                        <span className="text-zinc-300">{text}</span>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
+              </div>
+            )}
+
+            {/* exemplar panel — collapsible, available at any preview iteration */}
+            {resumes.length > 0 && (
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900/50">
+                <button
+                  onClick={() => setExemplarPanelOpen((v) => !v)}
+                  className="w-full flex items-center justify-between px-4 py-3 text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
+                >
+                  <span className="flex items-center gap-2">
+                    <span>⭐</span>
+                    <span className="font-medium">
+                      Mark ideal resumes
+                      {resumes.filter((r) => r.is_exemplar).length > 0 && (
+                        <span className="ml-2 text-yellow-400">
+                          ({resumes.filter((r) => r.is_exemplar).length} starred)
+                        </span>
+                      )}
+                    </span>
+                  </span>
+                  <span className="text-zinc-600">{exemplarPanelOpen ? "▲" : "▼"}</span>
+                </button>
+                {exemplarPanelOpen && (
+                  <div className="px-4 pb-4 space-y-2 border-t border-zinc-800">
+                    <div className="space-y-1 max-h-48 overflow-y-auto pr-1 mt-3">
+                      {resumes.map((r) => {
+                        const q = r.quality as any;
+                        const readable = q ? ("text_extractable" in q ? !!q.text_extractable : !!q.readable) : true;
+                        return (
+                          <div key={r.file_name} className="flex items-center justify-between gap-3 rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${readable ? "bg-green-950 text-green-400" : "bg-zinc-800 text-zinc-500"}`}>
+                                {readable ? "ok" : "skip"}
+                              </span>
+                              <span className="text-xs text-zinc-300 font-mono truncate">{r.file_name}</span>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <a
+                                href={`${BASE}/api/sessions/${id}/resumes/${encodeURIComponent(r.file_name)}/pdf`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="View PDF"
+                                className="text-zinc-600 hover:text-zinc-300 text-xs transition-colors"
+                              >↗</a>
+                              <button
+                                onClick={() => handleToggleExemplar(r.file_name, r.is_exemplar)}
+                                title={r.is_exemplar ? "Unmark as ideal" : "Mark as ideal candidate"}
+                                className={`text-base transition-colors ${r.is_exemplar ? "text-yellow-400 hover:text-yellow-300" : "text-zinc-700 hover:text-zinc-400"}`}
+                              >★</button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {(() => {
+                      const exemplarCount = resumes.filter((r) => r.is_exemplar).length;
+                      return exemplarCount >= 2 ? (
+                        <Button
+                          onClick={handleRubricFromExemplars}
+                          disabled={busy}
+                          variant="outline"
+                          className="border-yellow-700 text-yellow-400 hover:bg-yellow-950 text-xs"
+                        >
+                          {busy ? "Generating rubric…" : `⭐ Regenerate Rubric from ${exemplarCount} Ideal Resumes`}
+                        </Button>
+                      ) : (
+                        <p className="text-[11px] text-zinc-600">Star 2+ resumes to regenerate the rubric from examples</p>
+                      );
+                    })()}
+                  </div>
+                )}
               </div>
             )}
 
@@ -371,92 +523,18 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
 
             <Separator className="bg-zinc-800" />
 
-            {/* refine inputs */}
-            <div className="space-y-3">
-              <p className="text-xs text-zinc-400 font-medium">Refine criteria for next iteration:</p>
-
-              {/* Row 1: include / exclude */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs text-green-600 mb-1.5 flex items-center gap-1">
-                    <span>➕</span> Also include candidates who…
-                  </label>
-                  <Textarea
-                    placeholder="e.g. 2+ years B2B SaaS, led a team"
-                    value={includeText}
-                    onChange={(e) => setIncludeText(e.target.value)}
-                    rows={3}
-                    className="bg-zinc-950 border-green-900/50 focus:border-green-700 text-zinc-200 text-sm resize-none"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-red-500 mb-1.5 flex items-center gap-1">
-                    <span>➖</span> Exclude candidates who…
-                  </label>
-                  <Textarea
-                    placeholder="e.g. only consulting background, no product experience"
-                    value={excludeText}
-                    onChange={(e) => setExcludeText(e.target.value)}
-                    rows={3}
-                    className="bg-zinc-950 border-red-900/50 focus:border-red-700 text-zinc-200 text-sm resize-none"
-                  />
-                </div>
-              </div>
-
-              {/* Row 2: update baseline / update P0 */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs text-amber-500 mb-1.5 flex items-center gap-1">
-                    <span>⚙︎</span> Add / change hard filters (baseline)
-                  </label>
-                  <Textarea
-                    placeholder="e.g. Require tier-1 Indian university (IIT/IIM/BITS); remove the consulting requirement; make product experience a hard reject"
-                    value={updateBaselineText}
-                    onChange={(e) => setUpdateBaselineText(e.target.value)}
-                    rows={3}
-                    className="bg-zinc-950 border-amber-900/50 focus:border-amber-700 text-zinc-200 text-sm resize-none"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-violet-400 mb-1.5 flex items-center gap-1">
-                    <span>⚡</span> Add / change P0 signals (scoring weights)
-                  </label>
-                  <Textarea
-                    placeholder="e.g. Raise weight for 0-to-1 builders to 40%; add a signal for scaling past 1M users; lower education weight"
-                    value={updateP0Text}
-                    onChange={(e) => setUpdateP0Text(e.target.value)}
-                    rows={3}
-                    className="bg-zinc-950 border-violet-900/50 focus:border-violet-700 text-zinc-200 text-sm resize-none"
-                  />
-                </div>
-              </div>
-
-              {/* pending params preview */}
-              {(includeText.trim() || excludeText.trim() || updateBaselineText.trim() || updateP0Text.trim()) && (
-                <div className="flex flex-wrap gap-2 px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg">
-                  <span className="text-[10px] text-zinc-500 uppercase tracking-wide self-center">Will apply:</span>
-                  {includeText.trim() && (
-                    <span className="text-xs bg-green-950/70 border border-green-800/50 text-green-300 px-2 py-0.5 rounded-full">
-                      + {includeText.trim()}
-                    </span>
-                  )}
-                  {excludeText.trim() && (
-                    <span className="text-xs bg-red-950/70 border border-red-800/50 text-red-300 px-2 py-0.5 rounded-full">
-                      − {excludeText.trim()}
-                    </span>
-                  )}
-                  {updateBaselineText.trim() && (
-                    <span className="text-xs bg-amber-950/70 border border-amber-800/50 text-amber-300 px-2 py-0.5 rounded-full">
-                      ⚙︎ baseline: {updateBaselineText.trim()}
-                    </span>
-                  )}
-                  {updateP0Text.trim() && (
-                    <span className="text-xs bg-violet-950/70 border border-violet-800/50 text-violet-300 px-2 py-0.5 rounded-full">
-                      ⚡ P0: {updateP0Text.trim()}
-                    </span>
-                  )}
-                </div>
-              )}
+            {/* refine input — single free-form box */}
+            <div className="space-y-2">
+              <label className="text-xs text-zinc-400 font-medium">
+                What should change? Gemini will update the rubric accordingly.
+              </label>
+              <Textarea
+                placeholder={`e.g. "Require IIT/IIM, drop the consulting requirement, raise weight for 0-to-1 builders to 40%, make B2B SaaS experience a hard filter"`}
+                value={instructionsText}
+                onChange={(e) => setInstructionsText(e.target.value)}
+                rows={3}
+                className="bg-zinc-950 border-zinc-700 focus:border-zinc-500 text-zinc-200 text-sm resize-none"
+              />
             </div>
 
             <div className="flex gap-3 mt-6">
@@ -465,7 +543,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
                 disabled={busy}
                 className="bg-white text-zinc-950 hover:bg-zinc-200"
               >
-                {busy ? "Re-evaluating…" : "Re-evaluate with updated parameters"}
+                {busy ? "Re-evaluating…" : "Re-evaluate"}
               </Button>
               <Button
                 onClick={handleReload}
@@ -485,6 +563,11 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
               </Button>
             </div>
           </div>
+        )}
+
+        {/* ── step 3.5: background eval running ── */}
+        {step === "running" && (
+          <FullEvalProgressPanel session={session} />
         )}
 
         {/* ── step 4: full results ── */}
@@ -1160,5 +1243,51 @@ function TokenUsagePanel({ totals }: { totals: Record<string, any> }) {
         </div>
       </div>
     </details>
+  );
+}
+
+function FullEvalProgressPanel({ session }: { session: Session }) {
+  const progress = session.full_eval_progress || { status: "queued" as const };
+  const scored = progress.scored ?? 0;
+  const total = progress.total ?? 0;
+  const pct = total > 0 ? Math.round((scored / total) * 100) : 0;
+  const isError = progress.status === "error";
+
+  return (
+    <Card className="bg-zinc-900 border-zinc-800">
+      <CardHeader>
+        <CardTitle className="text-zinc-100">
+          {isError
+            ? "Full evaluation failed"
+            : progress.status === "queued"
+            ? "Queuing full evaluation…"
+            : "Scoring resumes in the background"}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {!isError && (
+          <>
+            <div className="text-sm text-zinc-400">
+              {scored} / {total} scored ({pct}%)
+            </div>
+            <div className="w-full h-2 bg-zinc-800 rounded overflow-hidden">
+              <div
+                className="h-full bg-green-500 transition-all duration-500"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <p className="text-xs text-zinc-500">
+              The evaluation runs asynchronously — you can leave this page and come back.
+              Partial results are saved after every resume so nothing is lost if something fails.
+            </p>
+          </>
+        )}
+        {isError && (
+          <div className="text-sm text-red-400">
+            {progress.error || "The background worker hit an error. You can re-click Accept to resume from the last checkpoint."}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

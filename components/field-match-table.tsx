@@ -347,6 +347,11 @@ export function FieldMatchTable({
   const [drawerFileName, setDrawerFileName] = useState("");
   const [drawerLens, setDrawerLens] = useState<ResumeLens | null>(null);
 
+  // Windowed rendering — at 600 candidates, a single DOM flush of fully expanded
+  // cards freezes the browser. Render in chunks of 50 with a "Show more" button.
+  const WINDOW_STEP = 50;
+  const [visibleCount, setVisibleCount] = useState(WINDOW_STEP);
+
   // name → file_name lookup
   const fileNameByCandidate = useMemo(() => {
     const map: Record<string, string> = {};
@@ -431,9 +436,9 @@ export function FieldMatchTable({
           </div>
         )}
 
-        {/* candidate list */}
+        {/* candidate list — windowed to avoid freezing the browser on 600+ results */}
         <div className="space-y-2">
-          {candidates.map((c, i) => (
+          {candidates.slice(0, visibleCount).map((c, i) => (
             <CandidateCard
               key={i}
               c={c}
@@ -442,6 +447,17 @@ export function FieldMatchTable({
               onViewResume={sessionId ? handleViewResume : undefined}
             />
           ))}
+          {visibleCount < candidates.length && (
+            <div className="flex items-center justify-center pt-4">
+              <button
+                onClick={() => setVisibleCount((n) => Math.min(n + WINDOW_STEP, candidates.length))}
+                className="text-xs text-zinc-400 hover:text-zinc-200 border border-zinc-700 rounded px-4 py-2"
+              >
+                Show {Math.min(WINDOW_STEP, candidates.length - visibleCount)} more
+                ({visibleCount}/{candidates.length} shown)
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

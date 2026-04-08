@@ -1,11 +1,26 @@
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+export const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export type SessionStatus =
   | "created"
   | "jd_analyzed"
   | "resumes_uploaded"
+  | "rubric_ready"
   | "preview_active"
+  | "running_full_eval"
   | "completed";
+
+export interface FullEvalProgress {
+  status: "idle" | "queued" | "running" | "completed" | "error";
+  scored?: number;
+  total?: number;
+  error?: string | null;
+}
+
+export interface FullEvalStatus {
+  progress: FullEvalProgress;
+  results_count: number;
+  status: SessionStatus;
+}
 
 export interface FieldMatch {
   field: string;
@@ -118,6 +133,7 @@ export interface ResumeListItem {
   quality: any;
   keyword_score: number;
   resume_lens?: ResumeLens | null;
+  is_exemplar: boolean;
 }
 
 export interface Session {
@@ -140,6 +156,7 @@ export interface Session {
   candidate_feedback_history: Array<Record<string, unknown>>;
   preview_field_results: PreviewResults | null;
   full_results: PreviewResults | null;
+  full_eval_progress?: FullEvalProgress | null;
   token_totals: Record<string, unknown>;
 }
 
@@ -205,16 +222,13 @@ export const api = {
 
   refinePreview: (
     id: string,
-    include: string,
-    exclude: string,
+    instructions: string,
     candidate_feedback: CandidateFeedback[] = [],
     apiKey?: string,
-    update_baseline = "",
-    update_p0 = "",
   ) =>
     req<Session>(`/api/sessions/${id}/preview/refine`, {
       method: "POST",
-      body: JSON.stringify({ include, exclude, candidate_feedback, api_key: apiKey, update_baseline, update_p0 }),
+      body: JSON.stringify({ instructions, candidate_feedback, api_key: apiKey }),
     }),
 
   reloadPreview: (id: string, apiKey?: string) =>
@@ -231,4 +245,19 @@ export const api = {
 
   listResumes: (id: string) =>
     req<ResumeListItem[]>(`/api/sessions/${id}/resumes`),
+
+  fullEvalStatus: (id: string) =>
+    req<FullEvalStatus>(`/api/sessions/${id}/full-eval-status`),
+
+  markExemplar: (sessionId: string, fileName: string, isExemplar: boolean) =>
+    req<ResumeListItem>(`/api/sessions/${sessionId}/resumes/${encodeURIComponent(fileName)}/mark-exemplar`, {
+      method: "PATCH",
+      body: JSON.stringify({ is_exemplar: isExemplar }),
+    }),
+
+  rubricFromExemplars: (sessionId: string, apiKey?: string) =>
+    req<Session>(`/api/sessions/${sessionId}/rubric-from-exemplars`, {
+      method: "POST",
+      body: JSON.stringify({ api_key: apiKey }),
+    }),
 };
