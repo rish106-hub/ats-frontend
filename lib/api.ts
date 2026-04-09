@@ -73,7 +73,7 @@ export interface CandidateResult {
   baseline_pass: boolean;
   baseline_failures: string[];
   p0_score: number;
-  p0_matches: P0Match[] | string[];
+  p0_matches: P0Match[];
   extra_param_matches: string[];
   red_flags_found: string[];
   overall_score: number;
@@ -257,6 +257,22 @@ export const api = {
 
   rubricFromExemplars: (sessionId: string, apiKey?: string) =>
     req<Session>(`/api/sessions/${sessionId}/rubric-from-exemplars`, {
+      method: "POST",
+      body: JSON.stringify({ api_key: apiKey }),
+    }),
+
+  patchRubric: (
+    sessionId: string,
+    patch: { baseline_checks?: any[]; p0_weights?: any[]; red_flag_checks?: any[] },
+    apiKey?: string,
+  ) =>
+    req<Session>(`/api/sessions/${sessionId}/rubric`, {
+      method: "PATCH",
+      body: JSON.stringify({ ...patch, api_key: apiKey }),
+    }),
+
+  reclassifyPreview: (sessionId: string, apiKey?: string) =>
+    req<Session>(`/api/sessions/${sessionId}/preview/reclassify`, {
       method: "POST",
       body: JSON.stringify({ api_key: apiKey }),
     }),

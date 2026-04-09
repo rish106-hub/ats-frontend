@@ -149,6 +149,23 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
     run(() => api.accept(id, apiKey || undefined), { refreshResumesList: true });
   }
 
+  async function handlePatchAndReclassify(patch: { baseline_checks?: any[]; p0_weights?: any[] }) {
+    setBusy(true);
+    setError("");
+    try {
+      await api.patchRubric(id, patch, apiKey || undefined);
+      // Only reclassify if preview results exist (otherwise no field_matches to re-aggregate)
+      if ((session as Session).preview_field_results?.results?.length) {
+        await api.reclassifyPreview(id, apiKey || undefined);
+      }
+      await refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   // ── render ─────────────────────────────────────────────────────────────
 
   if (loading) return <Shell><p className="text-zinc-500 p-8">Loading…</p></Shell>;
@@ -416,7 +433,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
             )}
 
             {/* active rubric panel */}
-            <ActiveRubricPanel config={config} />
+            <ActiveRubricPanel config={config} onEdit={handlePatchAndReclassify} />
 
             {/* param history — always visible */}
             {session.extra_params_history.length > 0 && (
@@ -844,41 +861,101 @@ function LessonsLearnedPanel({ lessons }: { lessons: LessonLearned[] }) {
 
 // ── ActiveRubricPanel ─────────────────────────────────────────────────────────
 // Shows the current synthesized rubric (baseline checks, P0 weights, red flags)
-// so the user can see exactly which criteria are now active.
+// with interactive controls: hard/soft toggle per baseline check, weight sliders
+// for P0 signals. Changes auto-save via debounce + reclassify (zero LLM cost).
 
-function ActiveRubricPanel({ config }: { config: Record<string, unknown> | null }) {
+type BaselineCheck = { check: string; resume_field: string; reject_if_missing: boolean };
+type P0Weight = { signal: string; weight: number; resume_field: string };
+
+function ActiveRubricPanel({
+  config,
+  onEdit,
+}: {
+  config: Record<string, unknown> | null;
+  onEdit?: (patch: { baseline_checks?: BaselineCheck[]; p0_weights?: P0Weight[] }) => Promise<void>;
+}) {
   const [open, setOpen] = useState(false);
+  const [localChecks, setLocalChecks] = useState<BaselineCheck[]>([]);
+  const [localWeights, setLocalWeights] = useState<P0Weight[]>([]);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const editingRef = useRef(false);
+
+  // Sync local state from parent config, but skip if we're mid-debounce edit
+  useEffect(() => {
+    if (editingRef.current) return;
+    if (!config) return;
+    const rubric = (config.scoring_rubric as Record<string, unknown>) ?? {};
+    setLocalChecks((rubric.baseline_checks as BaselineCheck[]) ?? []);
+    setLocalWeights((rubric.p0_weights as P0Weight[]) ?? []);
+  }, [config]);
+
   if (!config) return null;
 
   const rubric = (config.scoring_rubric as Record<string, unknown>) ?? {};
-  const baselineChecks = (rubric.baseline_checks as Array<{ check: string; resume_field: string; reject_if_missing: boolean }>) ?? [];
-  const p0Weights = (rubric.p0_weights as Array<{ signal: string; weight: number; resume_field: string }>) ?? [];
   const redFlagChecks = (rubric.red_flag_checks as Array<{ check: string; resume_field: string }>) ?? [];
   const screeningSummary = config.screening_summary as string | undefined;
   const finalPrompt = config.final_evaluation_prompt as string | undefined;
 
-  const totalItems = baselineChecks.length + p0Weights.length + redFlagChecks.length;
+  const totalItems = localChecks.length + localWeights.length + redFlagChecks.length;
   if (totalItems === 0) return null;
 
+  function scheduleSave(checks: BaselineCheck[], weights: P0Weight[]) {
+    if (!onEdit) return;
+    editingRef.current = true;
+    setSaveStatus("idle");
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      setSaveStatus("saving");
+      try {
+        await onEdit({ baseline_checks: checks, p0_weights: weights });
+        setSaveStatus("saved");
+        setTimeout(() => setSaveStatus("idle"), 2000);
+      } catch {
+        setSaveStatus("idle");
+      } finally {
+        editingRef.current = false;
+      }
+    }, 600);
+  }
+
+  function toggleHardSoft(checkText: string) {
+    const updated = localChecks.map((c) =>
+      c.check === checkText ? { ...c, reject_if_missing: !c.reject_if_missing } : c,
+    );
+    setLocalChecks(updated);
+    scheduleSave(updated, localWeights);
+  }
+
+  function updateWeight(idx: number, val: number) {
+    const updated = localWeights.map((w, i) => (i === idx ? { ...w, weight: val } : w));
+    setLocalWeights(updated);
+    scheduleSave(localChecks, updated);
+  }
+
+  const hardChecks = localChecks.filter((c) => c.reject_if_missing !== false);
+  const softChecks = localChecks.filter((c) => c.reject_if_missing === false);
+  const totalWeight = localWeights.reduce((s, w) => s + (w.weight ?? 0), 0);
 
   return (
     <div className="border border-zinc-800 rounded-xl overflow-hidden">
       <button
-        onClick={() => setOpen(v => !v)}
+        onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center justify-between px-4 py-3 bg-zinc-900 hover:bg-zinc-800/80 transition-colors text-left"
       >
-        {(() => {
-          const hardCount = baselineChecks.filter(c => c.reject_if_missing !== false).length;
-          const softCount = baselineChecks.filter(c => c.reject_if_missing === false).length;
-          return (
-            <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-xs font-semibold text-zinc-200">⚖️ Active Evaluation Criteria</span>
-              <span className="text-[10px] font-mono bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-full">
-                {hardCount} hard · {softCount > 0 ? `${softCount} relaxed · ` : ""}{p0Weights.length} P0 · {redFlagChecks.length} flags
-              </span>
-            </div>
-          );
-        })()}
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-xs font-semibold text-zinc-200">⚖️ Active Evaluation Criteria</span>
+          <span className="text-[10px] font-mono bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-full">
+            {hardChecks.length} hard · {softChecks.length > 0 ? `${softChecks.length} relaxed · ` : ""}
+            {localWeights.length} P0 · {redFlagChecks.length} flags
+          </span>
+          {onEdit && saveStatus === "saving" && (
+            <span className="text-[10px] text-yellow-400 animate-pulse">Saving…</span>
+          )}
+          {onEdit && saveStatus === "saved" && (
+            <span className="text-[10px] text-emerald-400">✓ Saved</span>
+          )}
+        </div>
         <span className="text-zinc-600 text-xs">{open ? "▲" : "▼"}</span>
       </button>
 
@@ -890,11 +967,18 @@ function ActiveRubricPanel({ config }: { config: Record<string, unknown> | null 
             </p>
           )}
 
-          {/* Full evaluation prompt — users can verify it reflects their include/exclude additions */}
+          {onEdit && (
+            <p className="text-[10px] text-zinc-600 italic">
+              Toggle hard/soft on any baseline check, or drag a P0 weight slider — changes apply instantly (no LLM re-score needed).
+            </p>
+          )}
+
+          {/* Full evaluation prompt */}
           {finalPrompt && (
             <details className="group">
               <summary className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 cursor-pointer hover:text-zinc-300 select-none">
-                📝 Full Evaluation Prompt <span className="text-zinc-600 font-normal normal-case">(click to verify it includes your parameters)</span>
+                📝 Full Evaluation Prompt{" "}
+                <span className="text-zinc-600 font-normal normal-case">(click to verify it includes your parameters)</span>
               </summary>
               <div className="mt-2 bg-zinc-900 border border-zinc-700 rounded-lg p-3 max-h-48 overflow-y-auto">
                 <p className="text-xs text-zinc-300 leading-relaxed whitespace-pre-wrap">{finalPrompt}</p>
@@ -902,95 +986,153 @@ function ActiveRubricPanel({ config }: { config: Record<string, unknown> | null 
             </details>
           )}
 
-          {baselineChecks.length > 0 && (() => {
-            const hardChecks = baselineChecks.filter(c => c.reject_if_missing !== false);
-            const softChecks = baselineChecks.filter(c => c.reject_if_missing === false);
-            return (
-              <div className="space-y-3">
-                {/* Hard filters */}
-                {hardChecks.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                      ⛔ Hard Filters <span className="text-red-500 font-normal">(fail = auto reject)</span>
-                    </p>
-                    <div className="space-y-1.5">
-                      {hardChecks.map((c, i) => (
-                        <div key={i} className="flex items-start gap-3 text-xs bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 py-2">
-                          <span className="text-red-400 shrink-0 mt-0.5">⛔</span>
-                          <div className="min-w-0 space-y-0.5">
-                            <p className="text-zinc-200 leading-relaxed">{c.check}</p>
-                            <p className="text-zinc-600">Field: <span className="font-mono text-zinc-500">{c.resume_field}</span></p>
-                          </div>
+          {/* Baseline checks — with hard/soft toggle */}
+          {localChecks.length > 0 && (
+            <div className="space-y-3">
+              {hardChecks.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                    ⛔ Hard Filters{" "}
+                    <span className="text-red-500 font-normal">(fail = auto reject)</span>
+                  </p>
+                  <div className="space-y-1.5">
+                    {hardChecks.map((c) => (
+                      <div
+                        key={c.check}
+                        className="flex items-start gap-3 text-xs bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 py-2"
+                      >
+                        <span className="text-red-400 shrink-0 mt-0.5">⛔</span>
+                        <div className="min-w-0 flex-1 space-y-0.5">
+                          <p className="text-zinc-200 leading-relaxed">{c.check}</p>
+                          <p className="text-zinc-600">
+                            Field: <span className="font-mono text-zinc-500">{c.resume_field}</span>
+                          </p>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Relaxed checks — were hard filters, recruiter relaxed them via include */}
-                {softChecks.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                      ✅ Relaxed Criteria <span className="text-green-600 font-normal">(preference, not a gate — relaxed by your include)</span>
-                    </p>
-                    <div className="space-y-1.5">
-                      {softChecks.map((c, i) => (
-                        <div key={i} className="flex items-start gap-3 text-xs bg-green-950/20 border border-green-800/40 rounded-lg px-3 py-2">
-                          <span className="text-green-500 shrink-0 mt-0.5">✅</span>
-                          <div className="min-w-0 space-y-0.5">
-                            <p className="text-zinc-300 leading-relaxed">{c.check}</p>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <p className="text-zinc-600">Field: <span className="font-mono text-zinc-500">{c.resume_field}</span></p>
-                              <span className="text-[9px] bg-green-950/60 text-green-400 border border-green-800/50 px-1.5 py-0.5 rounded font-semibold uppercase tracking-wide">
-                                No longer a hard filter
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-
-          {p0Weights.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                🎯 P0 Signal Weights <span className="text-zinc-600 font-normal">(higher = more important)</span>
-              </p>
-              <div className="space-y-2">
-                {p0Weights.map((w, i) => (
-                  <div key={i} className="flex items-center gap-3 text-xs">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-zinc-300 truncate">{w.signal}</p>
-                      <p className="text-zinc-600 font-mono">{w.resume_field}</p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <div className="w-20 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                        <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${Math.min(w.weight, 100)}%` }} />
+                        {onEdit && (
+                          <button
+                            onClick={() => toggleHardSoft(c.check)}
+                            title="Make this a soft preference instead of a hard gate"
+                            className="shrink-0 mt-0.5 text-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-emerald-400 border border-zinc-700 rounded px-1.5 py-0.5 transition-colors"
+                          >
+                            → Soft
+                          </button>
+                        )}
                       </div>
-                      <span className="text-emerald-400 font-mono font-bold w-8 text-right">{w.weight}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {softChecks.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                    ✅ Relaxed Criteria{" "}
+                    <span className="text-green-600 font-normal">(preference, not a gate)</span>
+                  </p>
+                  <div className="space-y-1.5">
+                    {softChecks.map((c) => (
+                      <div
+                        key={c.check}
+                        className="flex items-start gap-3 text-xs bg-green-950/20 border border-green-800/40 rounded-lg px-3 py-2"
+                      >
+                        <span className="text-green-500 shrink-0 mt-0.5">✅</span>
+                        <div className="min-w-0 flex-1 space-y-0.5">
+                          <p className="text-zinc-300 leading-relaxed">{c.check}</p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-zinc-600">
+                              Field: <span className="font-mono text-zinc-500">{c.resume_field}</span>
+                            </p>
+                            <span className="text-[9px] bg-green-950/60 text-green-400 border border-green-800/50 px-1.5 py-0.5 rounded font-semibold uppercase tracking-wide">
+                              Not a hard filter
+                            </span>
+                          </div>
+                        </div>
+                        {onEdit && (
+                          <button
+                            onClick={() => toggleHardSoft(c.check)}
+                            title="Make this a hard rejection filter again"
+                            className="shrink-0 mt-0.5 text-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-red-400 border border-zinc-700 rounded px-1.5 py-0.5 transition-colors"
+                          >
+                            → Hard
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* P0 weights — interactive sliders */}
+          {localWeights.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                  🎯 P0 Signal Weights{" "}
+                  <span className="text-zinc-600 font-normal">(drag to adjust — must sum to ~100)</span>
+                </p>
+                <span
+                  className={`text-[10px] font-mono ${
+                    Math.abs(totalWeight - 100) <= 5 ? "text-zinc-600" : "text-amber-400"
+                  }`}
+                >
+                  Σ = {totalWeight}
+                </span>
+              </div>
+              <div className="space-y-3">
+                {localWeights.map((w, i) => (
+                  <div key={i} className="space-y-1">
+                    <div className="flex items-center gap-2 text-xs">
+                      <p className="flex-1 text-zinc-300 min-w-0 truncate">{w.signal}</p>
+                      <span className="shrink-0 font-mono font-bold text-emerald-400 w-8 text-right">
+                        {w.weight}
+                      </span>
                     </div>
+                    {onEdit ? (
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={w.weight}
+                        onChange={(e) => updateWeight(i, Number(e.target.value))}
+                        className="w-full h-1.5 accent-emerald-500 cursor-pointer"
+                      />
+                    ) : (
+                      <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-emerald-500 rounded-full"
+                          style={{ width: `${Math.min(w.weight, 100)}%` }}
+                        />
+                      </div>
+                    )}
+                    <p className="text-[10px] text-zinc-700 font-mono">{w.resume_field}</p>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
+          {/* Red flag checks — read-only */}
           {redFlagChecks.length > 0 && (
             <div className="space-y-2">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                🚩 Red Flag Checks <span className="text-zinc-600 font-normal">(deprioritise if present)</span>
+                🚩 Red Flag Checks{" "}
+                <span className="text-zinc-600 font-normal">(deprioritise if present)</span>
               </p>
               <div className="space-y-1.5">
                 {redFlagChecks.map((f, i) => (
-                  <div key={i} className="flex items-start gap-3 text-xs bg-orange-950/20 border border-orange-900/30 rounded-lg px-3 py-2">
+                  <div
+                    key={i}
+                    className="flex items-start gap-3 text-xs bg-orange-950/20 border border-orange-900/30 rounded-lg px-3 py-2"
+                  >
                     <span className="text-orange-400 shrink-0 mt-0.5">⚠️</span>
                     <div className="min-w-0 space-y-0.5">
                       <p className="text-zinc-300 leading-relaxed">{f.check}</p>
-                      <p className="text-zinc-600">Field: <span className="font-mono text-zinc-500">{f.resume_field}</span></p>
+                      <p className="text-zinc-600">
+                        Field: <span className="font-mono text-zinc-500">{f.resume_field}</span>
+                      </p>
                     </div>
                   </div>
                 ))}
