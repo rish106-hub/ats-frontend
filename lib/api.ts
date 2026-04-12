@@ -117,6 +117,12 @@ export interface ResumeLens {
   red_flag_notes?: string;
 }
 
+export interface InterpretResponse {
+  interpretation: string;
+  will_do: string[];
+  confirmation_prompt: string;
+}
+
 export interface LessonLearned {
   candidate?: string;
   action?: string;
@@ -275,5 +281,11 @@ export const api = {
     req<Session>(`/api/sessions/${sessionId}/preview/reclassify`, {
       method: "POST",
       body: JSON.stringify({ api_key: apiKey }),
+    }),
+
+  interpretInstructions: (id: string, instructions: string, apiKey?: string) =>
+    req<InterpretResponse>(`/api/sessions/${id}/preview/interpret`, {
+      method: "POST",
+      body: JSON.stringify({ instructions, api_key: apiKey }),
     }),
 };

@@ -2,7 +2,7 @@
 
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, BASE, type Session, type CandidateFeedback, type JdAnalysis, type ResumeListItem, type LessonLearned, type SkippedInfo } from "@/lib/api";
+import { api, BASE, type Session, type CandidateFeedback, type InterpretResponse, type JdAnalysis, type ResumeListItem, type LessonLearned, type SkippedInfo } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -42,6 +42,8 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   const [instructionsText, setInstructionsText] = useState("");
   const [exemplarPanelOpen, setExemplarPanelOpen] = useState(false);
   const [candidateFeedback, setCandidateFeedback] = useState<CandidateFeedback[]>([]);
+  const [interpretPending, setInterpretPending] = useState(false);
+  const [interpretResult, setInterpretResult] = useState<InterpretResponse | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
@@ -126,7 +128,29 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
     run(() => api.startPreview(id, apiKey || undefined), { refreshResumesList: true });
   }
 
-  function handleRefine() {
+  /** Step 1: interpret the instruction — show confirmation before refining. */
+  async function handleRequestRefine() {
+    // If no free-form text, skip interpret and go straight to refine (feedback-only).
+    if (!instructionsText.trim()) {
+      doRefine();
+      return;
+    }
+    setInterpretPending(true);
+    setInterpretResult(null);
+    setError("");
+    try {
+      const result = await api.interpretInstructions(id, instructionsText, apiKey || undefined);
+      setInterpretResult(result);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setInterpretPending(false);
+    }
+  }
+
+  /** Step 2: user confirmed — run the actual refine. */
+  function doRefine() {
+    setInterpretResult(null);
     run(
       () => api.refinePreview(id, instructionsText, candidateFeedback, apiKey || undefined),
       { refreshResumesList: true },
@@ -540,27 +564,68 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
 
             <Separator className="bg-zinc-800" />
 
-            {/* refine input — single free-form box */}
+            {/* refine input — single free-form box with AI confirmation */}
             <div className="space-y-2">
               <label className="text-xs text-zinc-400 font-medium">
-                What should change? Gemini will update the rubric accordingly.
+                What should change? The AI will confirm its interpretation before updating.
               </label>
               <Textarea
                 placeholder={`e.g. "Require IIT/IIM, drop the consulting requirement, raise weight for 0-to-1 builders to 40%, make B2B SaaS experience a hard filter"`}
                 value={instructionsText}
-                onChange={(e) => setInstructionsText(e.target.value)}
+                onChange={(e) => {
+                  setInstructionsText(e.target.value);
+                  setInterpretResult(null); // clear stale interpretation on edit
+                }}
                 rows={3}
                 className="bg-zinc-950 border-zinc-700 focus:border-zinc-500 text-zinc-200 text-sm resize-none"
               />
             </div>
 
+            {/* AI interpretation confirmation panel */}
+            {interpretResult && (
+              <div className="rounded-xl border border-blue-700/50 bg-blue-950/20 px-4 py-4 space-y-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-400">
+                  🤖 Here's what I'll do — please confirm
+                </p>
+                <p className="text-sm text-blue-100 leading-relaxed">{interpretResult.interpretation}</p>
+                {interpretResult.will_do.length > 0 && (
+                  <ul className="space-y-1">
+                    {interpretResult.will_do.map((action, i) => (
+                      <li key={i} className="flex items-start gap-2 text-xs text-blue-200">
+                        <span className="text-blue-500 mt-0.5 shrink-0">→</span>
+                        <span>{action}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <p className="text-sm text-blue-300 font-medium">{interpretResult.confirmation_prompt}</p>
+                <div className="flex gap-3 pt-1">
+                  <Button
+                    onClick={doRefine}
+                    disabled={busy}
+                    className="bg-blue-600 hover:bg-blue-500 text-white text-sm"
+                  >
+                    {busy ? "Applying…" : "Yes, apply"}
+                  </Button>
+                  <Button
+                    onClick={() => setInterpretResult(null)}
+                    disabled={busy}
+                    variant="outline"
+                    className="border-zinc-700 text-zinc-400 hover:bg-zinc-800 text-sm"
+                  >
+                    Cancel / Edit
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <div className="flex gap-3 mt-6">
               <Button
-                onClick={handleRefine}
-                disabled={busy}
+                onClick={handleRequestRefine}
+                disabled={busy || interpretPending}
                 className="bg-white text-zinc-950 hover:bg-zinc-200"
               >
-                {busy ? "Re-evaluating…" : "Re-evaluate"}
+                {interpretPending ? "Interpreting…" : busy ? "Re-evaluating…" : "Re-evaluate"}
               </Button>
               <Button
                 onClick={handleReload}
