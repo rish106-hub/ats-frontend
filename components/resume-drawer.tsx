@@ -1,18 +1,19 @@
 "use client";
 
 import { useEffect } from "react";
+import { ExternalLink, X, XCircle, Check } from "lucide-react";
 import { type CandidateResult, type ResumeLens } from "@/lib/api";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-const LENS_FIELDS: { key: keyof ResumeLens; label: string; icon: string }[] = [
-  { key: "ownership_arc",      label: "Ownership Arc",      icon: "🏗️" },
-  { key: "domain_proximity",   label: "Domain Proximity",   icon: "🎯" },
-  { key: "craft_signals",      label: "Craft Signals",      icon: "⚙️" },
-  { key: "experience_profile", label: "Experience Profile", icon: "📅" },
-  { key: "trajectory",         label: "Trajectory",         icon: "📈" },
-  { key: "hm_flag",            label: "HM Flag",            icon: "🚩" },
-  { key: "red_flag_notes",     label: "Red Flag Notes",     icon: "⚠️" },
+const LENS_FIELDS: { key: keyof ResumeLens; label: string }[] = [
+  { key: "ownership_arc",      label: "Ownership Arc"      },
+  { key: "domain_proximity",   label: "Domain Proximity"   },
+  { key: "craft_signals",      label: "Craft Signals"      },
+  { key: "experience_profile", label: "Experience Profile" },
+  { key: "trajectory",         label: "Trajectory"         },
+  { key: "hm_flag",            label: "HM Flag"            },
+  { key: "red_flag_notes",     label: "Red Flag Notes"     },
 ];
 
 interface ResumeDrawerProps {
@@ -103,13 +104,13 @@ export function ResumeDrawer({ open, onClose, sessionId, fileName, candidate, re
               rel="noopener noreferrer"
               className="nh-btn-ghost flex items-center gap-1.5 text-xs px-3 py-1.5"
             >
-              ↗ Open PDF
+              <ExternalLink size={13} /> Open PDF
             </a>
             <button
               onClick={onClose}
               className="nh-btn-ghost w-8 h-8 flex items-center justify-center text-sm"
             >
-              ✕
+              <X size={13} />
             </button>
           </div>
         </div>
@@ -133,7 +134,7 @@ export function ResumeDrawer({ open, onClose, sessionId, fileName, candidate, re
               <div className="space-y-3">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400/70">AI Resume Lens</p>
                 <div className="space-y-2">
-                  {lensFields.map(({ key, label, icon }) => {
+                  {lensFields.map(({ key, label }) => {
                     const value = resumeLens?.[key];
                     if (!value) return null;
                     const isFlag = key === "hm_flag" || key === "red_flag_notes";
@@ -144,7 +145,7 @@ export function ResumeDrawer({ open, onClose, sessionId, fileName, candidate, re
                         style={isFlag ? { borderColor: "rgba(249,115,22,0.2)" } : {}}
                       >
                         <p className={`text-[10px] font-semibold uppercase tracking-wider ${isFlag ? "text-orange-400/80" : "text-[#3a5080]"}`}>
-                          {icon} {label}
+                          {label}
                         </p>
                         <p className="text-xs text-[#c8d8f0] leading-relaxed">{String(value)}</p>
                       </div>
@@ -175,7 +176,7 @@ export function ResumeDrawer({ open, onClose, sessionId, fileName, candidate, re
                       className="flex gap-2 text-xs rounded-lg px-3 py-2"
                       style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.15)" }}
                     >
-                      <span className="text-red-400 shrink-0">✕</span>
+                      <XCircle size={11} className="text-red-400 shrink-0" />
                       <span className="text-red-300 leading-relaxed">{String(f)}</span>
                     </div>
                   ))}
@@ -186,7 +187,7 @@ export function ResumeDrawer({ open, onClose, sessionId, fileName, candidate, re
             {/* Red flags */}
             {candidate.red_flags_found && candidate.red_flags_found.length > 0 && (
               <div className="space-y-2">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-orange-400/70">🚩 Red Flags</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-orange-400/70">Red Flags</p>
                 <div className="space-y-1.5">
                   {candidate.red_flags_found.map((f, i) => (
                     <div
@@ -194,7 +195,7 @@ export function ResumeDrawer({ open, onClose, sessionId, fileName, candidate, re
                       className="flex gap-2 text-xs rounded-lg px-3 py-2"
                       style={{ background: "rgba(249,115,22,0.04)", border: "1px solid rgba(249,115,22,0.15)" }}
                     >
-                      <span className="text-orange-400 shrink-0">•</span>
+                      <span className="w-1 h-1 rounded-full bg-orange-400 shrink-0 mt-1.5" />
                       <span className="text-orange-300 leading-relaxed">{String(f)}</span>
                     </div>
                   ))}
@@ -210,9 +211,9 @@ export function ResumeDrawer({ open, onClose, sessionId, fileName, candidate, re
                   {candidate.field_matches.map((fm, i) => {
                     const match = fm.match as "pass" | "fail" | "partial";
                     const style = {
-                      pass:    { icon: "✓", cls: "text-emerald-400", borderColor: "rgba(16,185,129,0.5)",  bg: "rgba(16,185,129,0.04)"  },
-                      fail:    { icon: "✕", cls: "text-red-400",     borderColor: "rgba(239,68,68,0.5)",   bg: "rgba(239,68,68,0.04)"   },
-                      partial: { icon: "~", cls: "text-amber-400",   borderColor: "rgba(245,158,11,0.5)",  bg: "rgba(245,158,11,0.04)"  },
+                      pass:    { icon: <Check size={10} className="text-emerald-400" />, cls: "text-emerald-400", borderColor: "rgba(16,185,129,0.5)",  bg: "rgba(16,185,129,0.04)"  },
+                      fail:    { icon: <XCircle size={10} className="text-red-400" />,   cls: "text-red-400",     borderColor: "rgba(239,68,68,0.5)",   bg: "rgba(239,68,68,0.04)"   },
+                      partial: { icon: <span className="text-amber-400 text-[10px] font-bold">~</span>, cls: "text-amber-400",   borderColor: "rgba(245,158,11,0.5)",  bg: "rgba(245,158,11,0.04)"  },
                     }[match] ?? { icon: "—", cls: "text-[#6c80a8]", borderColor: "rgba(96,165,250,0.2)", bg: "transparent" };
 
                     return (

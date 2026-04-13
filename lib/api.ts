@@ -288,4 +288,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ instructions, api_key: apiKey }),
     }),
+
+  deleteSession: (id: string) =>
+    req<{ ok: boolean }>(`/api/sessions/${id}`, { method: "DELETE" }),
 };
+

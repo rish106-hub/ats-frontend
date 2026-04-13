@@ -10,6 +10,13 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { FieldMatchTable } from "@/components/field-match-table";
+import {
+  FileText, Upload, RefreshCw, Trophy, AlertTriangle, Info,
+  Zap, Play, XCircle, CheckCircle2, Search, Scale, Brain,
+  Star, Flag, Target, MessageSquare, Layers, Clock,
+  ArrowLeft, ExternalLink, ChevronUp, ChevronDown, X, Check,
+} from "lucide-react";
+import { AiThinking } from "@/components/ai-thinking";
 
 /* ── types ─────────────────────────────────────────────────────────── */
 type Step = "jd" | "resumes" | "preview" | "running" | "results";
@@ -33,11 +40,11 @@ function Spinner({ sm }: { sm?: boolean }) {
 }
 
 const PROC_MSGS = [
-  "Gemini is reading the details…",
+  "Parsing job description details…",
   "Extracting signals & requirements…",
   "Building your evaluation rubric…",
   "Cross-referencing hiring patterns…",
-  "Almost there…",
+  "Finalising criteria…",
 ];
 const RESUME_MSGS = ["Parsing resume structure…", "Extracting timelines…", "Identifying skills…", "Mapping to requirements…"];
 const EVAL_TIPS   = [
@@ -55,8 +62,8 @@ function BounceMsg({ msgs }: { msgs: string[] }) {
     <div className="flex items-center gap-3">
       <div className="flex gap-1">
         {[0, 1, 2].map(d => (
-          <span key={d} className="nh-bounce-dot w-1.5 h-1.5 rounded-full bg-blue-500"
-            style={{ animationDelay: `${d * 0.18}s` }} />
+          <span key={d} className="w-1.5 h-1.5 rounded-full bg-blue-500"
+            style={{ animationDelay: `${d * 0.18}s`, animation: `nh-bounce-dot 1.3s ease-in-out ${d * 0.18}s infinite` }} />
         ))}
       </div>
       <span className="text-blue-300/80 text-sm">{msgs[i]}</span>
@@ -193,7 +200,9 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
     <div className="min-h-screen flex items-center justify-center">
       <div className="nh-card p-12 flex flex-col items-center gap-4 text-center">
         <p className="text-red-400 text-sm">{error || "Session not found."}</p>
-        <button onClick={() => router.push("/")} className="nh-btn-ghost px-6 py-2 text-sm">← All Sessions</button>
+        <button onClick={() => router.push("/")} className="nh-btn-ghost flex items-center gap-2 px-6 py-2 text-sm">
+          <ArrowLeft size={14} /> All Sessions
+        </button>
       </div>
     </div>
   );
@@ -207,33 +216,39 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
 
       {/* ── Top bar ───────────────────────────────────────────────── */}
       <header className="nh-nav sticky top-0 z-50">
-        <div className="px-8 h-16 flex items-center justify-between gap-4">
+        <div className="px-8 h-14 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <button onClick={() => router.push("/")} className="flex items-center gap-2 hover:opacity-75 transition-opacity shrink-0">
-              <div className="w-7 h-7 rounded-lg flex items-center justify-center font-black text-white text-xs"
-                style={{ background: "linear-gradient(135deg,#2563eb,#0ea5e9)" }}>N</div>
-              <span className="font-bold text-white hidden sm:block">NextHire</span>
+              <div
+                className="w-6 h-6 rounded-lg flex items-center justify-center font-black text-white text-xs"
+                style={{ background: "linear-gradient(135deg,#4f6ef7,#06b6d4)" }}
+              >
+                N
+              </div>
+              <span className="font-bold text-white text-sm hidden sm:block">NextHire</span>
             </button>
-            <span className="text-[#1a2a4a] hidden sm:block">/</span>
+            <span className="text-[#2a3a5a] hidden sm:block text-sm">/</span>
             <span className="text-[#8899b8] text-sm font-medium truncate">
               {jd ? String((jd as any).role ?? "Session") : "New Session"}
             </span>
             {jd && (jd as any).role_context?.seniority_level && (
-              <span className="text-[10px] px-2.5 py-1 rounded-full font-semibold uppercase tracking-wide shrink-0 hidden md:block"
-                style={{ background: "rgba(37,99,235,0.12)", border: "1px solid rgba(96,165,250,0.2)", color: "#93c5fd" }}>
+              <span
+                className="text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide shrink-0 hidden md:block"
+                style={{ background: "rgba(37,99,235,0.12)", border: "1px solid rgba(96,165,250,0.2)", color: "#93c5fd" }}
+              >
                 {(jd as any).role_context.seniority_level}
               </span>
             )}
           </div>
 
-          <div className="flex items-center gap-5 shrink-0">
+          <div className="flex items-center gap-4 shrink-0">
             {session.preview_iteration_count > 0 && (
-              <span className="text-[#4a6080] text-xs hidden sm:block">
-                Iter <span className="text-blue-400 font-mono font-bold">{session.preview_iteration_count}</span>
+              <span className="text-[#3a5080] text-xs hidden sm:block">
+                iter <span className="text-blue-400 font-mono font-bold">{session.preview_iteration_count}</span>
               </span>
             )}
             {tokens && (
-              <span className="text-[#4a6080] text-xs font-mono hidden sm:block">{tokens.toLocaleString()} tokens</span>
+              <span className="text-[#3a5080] text-[11px] font-mono hidden sm:block">{tokens.toLocaleString()} tok</span>
             )}
           </div>
         </div>
@@ -247,19 +262,19 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
         <div className="sticky top-[calc(4rem+3.5rem)] z-40 px-8 py-2">
           <div className="nh-card p-4 flex items-center justify-between gap-3" style={{ background: "rgba(239,68,68,0.08)", borderColor: "rgba(239,68,68,0.25)" }}>
             <p className="text-red-400 text-sm">{error}</p>
-            <button onClick={() => setError("")} className="text-red-600 hover:text-red-400 text-sm shrink-0">✕</button>
+            <button onClick={() => setError("")} className="text-red-600 hover:text-red-400 shrink-0"><X size={13} /></button>
           </div>
         </div>
       )}
 
       {/* ── Content ───────────────────────────────────────────────── */}
-      <div className="flex-1 px-8 py-8 max-w-4xl mx-auto w-full space-y-8">
+      <div className="flex-1 px-8 py-10 max-w-4xl mx-auto w-full space-y-10">
 
         {/* ═══ STEP 1: JD ════════════════════════════════════════ */}
         {view === "jd" && (
           <>
-            <PageHeader icon="📄" title="Job Description Analysis"
-              sub="Paste the full JD — Gemini extracts baseline signals, P0 requirements, and red flags automatically." />
+            <PageHeader icon={<FileText size={16} />} title="Job Description Analysis"
+              sub="Paste the full job description — AI extracts baseline signals, P0 requirements, and red flags automatically." />
 
             <div className="nh-card p-8 space-y-6">
               <Textarea
@@ -272,7 +287,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
 
               <div className="flex items-center gap-4 flex-wrap">
                 <button onClick={analyzeJD} disabled={busy || !jdText.trim()} className="nh-btn-primary flex items-center gap-2 px-6 py-3 text-sm">
-                  {busy ? <><Spinner sm /> Analyzing…</> : "⚡ Analyze JD"}
+                  {busy ? <><Spinner sm /> Analyzing…</> : "Analyze JD"}
                 </button>
                 {busy && <BounceMsg msgs={PROC_MSGS} />}
                 {jdText.trim() && !busy && (
@@ -285,13 +300,16 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
             {!jdText.trim() && (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {[
-                  { icon: "🎯", t: "Baseline Signals", d: "Non-negotiable requirements every candidate must meet" },
-                  { icon: "⭐", t: "P0 Signals",       d: "High-priority differentiators that define the ideal hire" },
-                  { icon: "🚩", t: "Red Flags",        d: "Patterns that indicate poor culture or role fit" },
-                ].map(({ icon, t, d }) => (
-                  <div key={t} className="nh-card p-5 space-y-2">
-                    <p className="text-[#c8d8f0] text-sm font-semibold">{icon} {t}</p>
-                    <p className="text-[#4a6080] text-xs leading-snug">{d}</p>
+                  { t: "Baseline Signals", d: "Non-negotiable requirements every candidate must meet",    color: "#4f6ef7", icon: "●" },
+                  { t: "P0 Signals",       d: "High-priority differentiators that define the ideal hire", color: "#8b5cf6", icon: "★" },
+                  { t: "Red Flags",        d: "Patterns that indicate poor culture or role fit",           color: "#f59e0b", icon: "⚑" },
+                ].map(({ t, d, color, icon }) => (
+                  <div key={t} className="nh-card p-6 space-y-3">
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-base leading-none" style={{ color }}>{icon}</span>
+                      <p className="text-sm font-semibold text-white">{t}</p>
+                    </div>
+                    <p className="text-[#566b99] text-xs leading-relaxed">{d}</p>
                   </div>
                 ))}
               </div>
@@ -315,14 +333,16 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
         {/* ═══ STEP 2: RESUMES ═══════════════════════════════════ */}
         {(view === "resumes" || (view === "preview" && !session.preview_field_results)) && (
           <>
-            <PageHeader icon="📁" title="Upload Resumes"
-              sub="Upload PDF resumes — Gemini parses each one into structured JSON ready for evaluation." />
+            <PageHeader icon={<Upload size={16} />} title="Upload Resumes"
+              sub="Upload PDF resumes — each one is parsed into structured JSON ready for evaluation." />
 
             {/* JD pill */}
             {jd && (
               <button onClick={() => setViewStep("jd")} className="w-full nh-card nh-card-hover p-5 flex items-center gap-4 text-left group">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center text-base shrink-0"
-                  style={{ background: "rgba(37,99,235,0.12)", border: "1px solid rgba(96,165,250,0.2)" }}>📄</div>
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                  style={{ background: "rgba(37,99,235,0.12)", border: "1px solid rgba(96,165,250,0.2)" }}>
+                  <FileText size={14} className="text-blue-400" />
+                </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-[#c8d8f0] text-sm font-medium truncate">
                     {(jd as any).role ?? "Analysed JD"} — {((jd as any).baseline_signals?.length ?? 0)} baseline · {((jd as any).p0_signals?.length ?? 0)} P0 signals
@@ -344,8 +364,10 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
                 onMouseLeave={e => (e.currentTarget.style.borderColor = "rgba(96,165,250,0.2)")}
                 onClick={() => fileRef.current?.click()}
               >
-                <div className="w-12 h-12 mx-auto rounded-xl flex items-center justify-center text-2xl mb-4 nh-float"
-                  style={{ background: "rgba(37,99,235,0.1)", border: "1px solid rgba(96,165,250,0.2)" }}>📁</div>
+                <div className="w-12 h-12 mx-auto rounded-xl flex items-center justify-center mb-4 nh-float text-blue-400"
+                  style={{ background: "rgba(37,99,235,0.1)", border: "1px solid rgba(96,165,250,0.2)" }}>
+                  <Upload size={22} />
+                </div>
 
                 {files.length > 0 ? (
                   <div className="space-y-2">
@@ -387,8 +409,8 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
         {view === "preview" && session.preview_field_results && (
           <div className="space-y-8">
             <div className="flex items-start justify-between gap-4 flex-wrap">
-              <PageHeader icon="🔄" title="Preview & Refine"
-                sub="AI scored a sample of candidates. Review, give feedback, and refine the rubric in plain English." />
+              <PageHeader icon={<RefreshCw size={16} />} title="Preview & Refine"
+                sub="A sample of candidates has been scored. Review results, give feedback, and refine criteria in plain English." />
               <span className="nh-inset px-4 py-1.5 text-xs font-mono text-blue-300 shrink-0 self-center">
                 Iteration {session.preview_iteration_count}
               </span>
@@ -490,7 +512,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
                   + 2 More Resumes
                 </button>
                 <button onClick={acceptAll} disabled={busy} className="nh-btn-success flex items-center gap-2 px-6 py-2.5 text-sm">
-                  {busy ? <Spinner sm /> : "✓"} Accept & Full Eval
+                  {busy ? <Spinner sm /> : <Check size={14} />} Accept & Full Eval
                 </button>
               </div>
               {busy && <BounceMsg msgs={PROC_MSGS} />}
@@ -507,8 +529,10 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
         {view === "results" && step === "results" && session.full_results && (
           <div className="space-y-8">
             <div className="flex items-start justify-between gap-4 flex-wrap">
-              <PageHeader icon="🏆" title="Full Evaluation Results" sub="Every candidate scored against your final rubric." />
-              <button onClick={() => router.push("/")} className="nh-btn-ghost px-5 py-2 text-sm self-center">← All Sessions</button>
+              <PageHeader icon={<Trophy size={16} />} title="Full Evaluation Results" sub="Every candidate scored against your final rubric — ranked by fit, not subjectivity." />
+              <button onClick={() => router.push("/")} className="nh-btn-ghost flex items-center gap-2 px-5 py-2 text-sm self-center">
+                <ArrowLeft size={14} /> All Sessions
+              </button>
             </div>
             <RubricAuditPanel config={session.final_config ?? session.synthesized_config} />
             <FieldMatchTable results={session.full_results} sessionId={id} resumes={resumes} />
@@ -522,13 +546,19 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
 }
 
 /* ── PageHeader ────────────────────────────────────────────────────── */
-function PageHeader({ icon, title, sub }: { icon: string; title: string; sub: string }) {
+function PageHeader({ icon, title, sub }: { icon: React.ReactNode; title: string; sub: string }) {
   return (
     <div className="space-y-2">
-      <h2 className="flex items-center gap-3 text-2xl font-black text-white">
-        <span>{icon}</span><span>{title}</span>
-      </h2>
-      <p className="text-[#6c80a8] text-sm leading-relaxed max-w-lg">{sub}</p>
+      <div className="flex items-center gap-3">
+        <span
+          className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 text-blue-400"
+          style={{ background: "rgba(79,110,247,0.1)", border: "1px solid rgba(79,110,247,0.2)" }}
+        >
+          {icon}
+        </span>
+        <h2 className="text-xl font-black text-white tracking-tight">{title}</h2>
+      </div>
+      <p className="text-[#566b99] text-sm leading-relaxed max-w-lg">{sub}</p>
     </div>
   );
 }
@@ -536,12 +566,12 @@ function PageHeader({ icon, title, sub }: { icon: string; title: string; sub: st
 /* ── StepNav ───────────────────────────────────────────────────────── */
 function StepNav({ current, view, onNavigate }: { current: Step; view: Step; onNavigate: (s: Step) => void }) {
   const displaySteps: Step[] = ["jd", "resumes", "preview", "results"];
-  const labels: Record<Step, string> = { jd: "JD Analysis", resumes: "Resumes", preview: "Preview", running: "Running", results: "Results" };
+  const labels: Record<Step, string> = { jd: "JD", resumes: "Resumes", preview: "Preview", running: "Running", results: "Results" };
   const currentIdx = STEP_ORDER.indexOf(current === "running" ? "preview" : current);
 
   return (
-    <div className="px-8 py-3 border-t" style={{ borderColor: "rgba(96,165,250,0.08)" }}>
-      <div className="flex items-center gap-1 max-w-xl">
+    <div className="px-8 py-2.5 border-t" style={{ borderColor: "rgba(96,165,250,0.07)" }}>
+      <div className="flex items-center max-w-lg">
         {displaySteps.map((key, i) => {
           const stepIdx     = STEP_ORDER.indexOf(key);
           const isDone      = stepIdx < currentIdx;
@@ -555,25 +585,37 @@ function StepNav({ current, view, onNavigate }: { current: Step; view: Step; onN
                 onClick={() => isReachable && onNavigate(key)}
                 disabled={!isReachable}
                 title={isReachable ? `Go to ${labels[key]}` : undefined}
-                className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-all ${
+                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all ${
                   isActive    ? "text-blue-300"
                   : isDone    ? "text-[#4a6080] hover:text-[#8899b8] cursor-pointer"
                   :              "text-[#2a3a5a] cursor-not-allowed"
                 }`}
               >
-                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 transition-all ${
-                  isActive ? "text-white"          : isDone ? "text-[#6c80a8]" : "text-[#2a3a5a]"
-                }`}
+                <span
+                  className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0 transition-all ${
+                    isActive ? "text-white" : isDone ? "text-[#6c80a8]" : "text-[#2a3a5a]"
+                  }`}
                   style={{
-                    background: isActive ? "linear-gradient(135deg,#2563eb,#0ea5e9)" : isDone ? "rgba(96,165,250,0.1)" : "transparent",
-                    border: `1px solid ${isActive ? "transparent" : isDone ? "rgba(96,165,250,0.2)" : "rgba(96,165,250,0.07)"}`,
-                  }}>
-                  {isDone ? "✓" : i + 1}
+                    background: isActive
+                      ? "linear-gradient(135deg,#2563eb,#0ea5e9)"
+                      : isDone ? "rgba(96,165,250,0.12)" : "transparent",
+                    border: `1px solid ${isActive ? "transparent" : isDone ? "rgba(96,165,250,0.25)" : "rgba(96,165,250,0.08)"}`,
+                    boxShadow: isActive ? "0 0 10px rgba(37,99,235,0.4)" : "none",
+                  }}
+                >
+                  {isDone ? <Check size={9} className="mx-auto" /> : i + 1}
                 </span>
                 <span className="hidden sm:block">{labels[key]}</span>
               </button>
               {!isLast && (
-                <div className="flex-1 h-px mx-1" style={{ background: isDone ? "rgba(96,165,250,0.2)" : "rgba(96,165,250,0.05)" }} />
+                <div
+                  className="flex-1 h-px mx-0.5"
+                  style={{
+                    background: isDone
+                      ? "linear-gradient(90deg, rgba(96,165,250,0.3), rgba(96,165,250,0.15))"
+                      : "rgba(96,165,250,0.06)",
+                  }}
+                />
               )}
             </div>
           );
@@ -717,7 +759,7 @@ function ParseConfirmation({ session, resumes, id, busy, onToggleExemplar, onRub
 
       {session.status === "rubric_ready" && (
         <div className="nh-inset p-4 space-y-1" style={{ borderColor: "rgba(245,158,11,0.25)" }}>
-          <p className="text-amber-300 text-sm font-semibold">⭐ Rubric generated from ideal resumes</p>
+          <p className="text-amber-300 text-sm font-semibold">Rubric generated from ideal resumes</p>
           <p className="text-[#4a6080] text-xs">Reverse-engineered from your starred examples. Click "Start Preview Loop" to evaluate candidates.</p>
         </div>
       )}
@@ -726,7 +768,7 @@ function ParseConfirmation({ session, resumes, id, busy, onToggleExemplar, onRub
       {resumes.length > 0 && (
         <div className="space-y-3">
           <p className="text-[#3a5080] text-xs font-semibold uppercase tracking-widest">
-            ⭐ Mark ideal resumes to generate rubric from examples
+            Mark ideal resumes to generate a rubric from examples
           </p>
           <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
             {resumes.map(r => (
@@ -743,10 +785,11 @@ function ParseConfirmation({ session, resumes, id, busy, onToggleExemplar, onRub
                 <div className="flex items-center gap-3 shrink-0">
                   <a href={`${BASE}/api/sessions/${id}/resumes/${encodeURIComponent(r.file_name)}/pdf`}
                     target="_blank" rel="noopener noreferrer"
-                    className="text-[#3a5080] hover:text-blue-400 text-xs transition-colors" title="View PDF">↗</a>
+                    className="text-[#3a5080] hover:text-blue-400 transition-colors" title="View PDF">
+                    <ExternalLink size={11} /></a>
                   <button onClick={() => onToggleExemplar(r.file_name, r.is_exemplar)}
                     className={`text-lg transition-colors ${r.is_exemplar ? "text-amber-400" : "text-[#2a3a5a] hover:text-[#4a6080]"}`}>
-                    ★
+                    <Star size={14} fill={r.is_exemplar ? "currentColor" : "none"} className={r.is_exemplar ? "text-amber-400" : "text-[#2a3a5a] hover:text-[#4a6080]"} />
                   </button>
                 </div>
               </div>
@@ -755,7 +798,7 @@ function ParseConfirmation({ session, resumes, id, busy, onToggleExemplar, onRub
           {starred >= 2
             ? <button onClick={onRubricFromExemplars} disabled={busy} className="nh-btn-ghost flex items-center gap-2 px-4 py-2 text-xs"
                 style={{ color: "#fcd34d", borderColor: "rgba(245,158,11,0.3)" }}>
-                {busy ? <Spinner sm /> : "⭐"} Generate Rubric from {starred} Ideal Resumes
+                {busy ? <Spinner sm /> : <Star size={11} />} Generate Rubric from {starred} Ideal Resumes
               </button>
             : <p className="text-[#2a3a5a] text-xs">Star 2+ resumes to unlock rubric generation from examples</p>
           }
@@ -764,7 +807,7 @@ function ParseConfirmation({ session, resumes, id, busy, onToggleExemplar, onRub
 
       <div className="pt-2 border-t" style={{ borderColor: "rgba(96,165,250,0.1)" }}>
         <button onClick={onStartPreview} disabled={busy} className="nh-btn-primary flex items-center gap-2 px-8 py-3 text-sm">
-          {busy ? <><Spinner sm /> Running preview…</> : "▶ Start Preview Loop"}
+          {busy ? <><Spinner sm /> Running preview…</> : <><Play size={14} /> Start Preview Loop</>}
         </button>
         {busy && <div className="mt-4"><BounceMsg msgs={PROC_MSGS} /></div>}
       </div>
@@ -791,10 +834,10 @@ function ExemplarPanel({ resumes, id, open, onToggle, onToggleExemplar, onRubric
     <div className="nh-card overflow-hidden">
       <button onClick={onToggle} className="w-full flex items-center justify-between px-6 py-4 text-sm font-medium transition-all hover:bg-white/[.015]">
         <span className="flex items-center gap-2 text-[#8899b8]">
-          ⭐ Mark Ideal Resumes
+          <Star size={12} className="text-amber-400" /> Mark Ideal Resumes
           {starred > 0 && <span className="text-amber-400">({starred} starred)</span>}
         </span>
-        <span className="text-[#3a5080] text-xs">{open ? "▲" : "▼"}</span>
+        {open ? <ChevronUp size={14} className="text-[#3a5080]" /> : <ChevronDown size={14} className="text-[#3a5080]" />}
       </button>
       {open && (
         <div className="px-6 pb-6 border-t space-y-3 pt-4" style={{ borderColor: "rgba(96,165,250,0.08)" }}>
@@ -810,9 +853,11 @@ function ExemplarPanel({ resumes, id, open, onToggle, onToggleExemplar, onRubric
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <a href={`${BASE}/api/sessions/${id}/resumes/${encodeURIComponent(r.file_name)}/pdf`} target="_blank" rel="noopener noreferrer"
-                    className="text-[#3a5080] hover:text-blue-400 text-xs transition-colors">↗</a>
+                    className="text-[#3a5080] hover:text-blue-400 text-xs transition-colors"><ExternalLink size={11} /></a>
                   <button onClick={() => onToggleExemplar(r.file_name, r.is_exemplar)}
-                    className={`text-lg transition-colors ${r.is_exemplar ? "text-amber-400" : "text-[#2a3a5a] hover:text-[#4a6080]"}`}>★</button>
+                    className={`text-lg transition-colors ${r.is_exemplar ? "text-amber-400" : "text-[#2a3a5a] hover:text-[#4a6080]"}`}>
+                    <Star size={14} fill={r.is_exemplar ? "currentColor" : "none"} className={r.is_exemplar ? "text-amber-400" : "text-[#2a3a5a] hover:text-[#4a6080]"} />
+                  </button>
                 </div>
               </div>
             ))}
@@ -820,7 +865,7 @@ function ExemplarPanel({ resumes, id, open, onToggle, onToggleExemplar, onRubric
           {starred >= 2
             ? <button onClick={onRubricFromExemplars} disabled={busy} className="nh-btn-ghost text-xs px-4 py-2"
                 style={{ color: "#fcd34d", borderColor: "rgba(245,158,11,0.3)" }}>
-                {busy ? "Generating…" : `⭐ Regenerate Rubric from ${starred} Ideal Resumes`}
+                {busy ? "Generating…" : `Regenerate Rubric from ${starred} Ideal Resumes`}
               </button>
             : <p className="text-[#2a3a5a] text-xs">Star 2+ resumes to regenerate the rubric</p>
           }
@@ -849,13 +894,13 @@ function LessonsLearnedPanel({ lessons }: { lessons: LessonLearned[] }) {
         className="w-full flex items-center justify-between px-6 py-4 text-left transition-all"
         style={{ background: "rgba(120,80,0,0.08)" }}>
         <div className="flex items-center gap-3">
-          <span className="text-sm font-semibold text-amber-300">🧠 Mental Model Shifts</span>
+          <span className="text-sm font-semibold text-amber-300">Rubric Shift Log</span>
           <span className="nh-inset px-2.5 py-1 text-[10px] font-mono text-amber-400"
             style={{ borderColor: "rgba(245,158,11,0.2)" }}>
             {lessons.length} lesson{lessons.length > 1 ? "s" : ""}
           </span>
         </div>
-        <span className="text-amber-600 text-xs">{open ? "▲" : "▼"}</span>
+        {open ? <ChevronUp size={13} className="text-amber-600" /> : <ChevronDown size={13} className="text-amber-600" />}
       </button>
       {open && (
         <div className="px-6 py-6 border-t space-y-5" style={{ borderColor: "rgba(245,158,11,0.1)" }}>
@@ -950,14 +995,14 @@ function ActiveRubricPanel({ config, onEdit }: {
       <button onClick={() => setOpen(v => !v)}
         className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-white/[.015] transition-all">
         <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-sm font-semibold text-[#c8d8f0]">⚖️ Active Evaluation Criteria</span>
+          <span className="text-sm font-semibold text-[#c8d8f0]">Active Evaluation Criteria</span>
           <span className="nh-inset px-2.5 py-1 text-[10px] font-mono text-[#6c80a8]">
             {hard.length} hard · {soft.length > 0 ? `${soft.length} relaxed · ` : ""}{localWeights.length} P0 · {redFlags.length} flags
           </span>
           {onEdit && saveStatus === "saving" && <span className="text-[10px] text-amber-400 animate-pulse">Saving…</span>}
-          {onEdit && saveStatus === "saved"  && <span className="text-[10px] text-emerald-400">✓ Saved</span>}
+          {onEdit && saveStatus === "saved" && <span className="text-[10px] text-emerald-400 flex items-center gap-1"><Check size={9} /> Saved</span>}
         </div>
-        <span className="text-[#3a5080] text-xs">{open ? "▲" : "▼"}</span>
+        {open ? <ChevronUp size={14} className="text-[#3a5080]" /> : <ChevronDown size={14} className="text-[#3a5080]" />}
       </button>
 
       {open && (
@@ -986,7 +1031,7 @@ function ActiveRubricPanel({ config, onEdit }: {
                 {hard.map(c => (
                   <div key={c.check} className="nh-inset flex items-start gap-3 px-4 py-3"
                     style={{ borderColor: "rgba(239,68,68,0.15)" }}>
-                    <span className="text-red-400 shrink-0 mt-0.5 text-xs">⛔</span>
+                    <XCircle size={13} className="text-red-400 shrink-0 mt-0.5" />
                     <div className="min-w-0 flex-1 space-y-0.5">
                       <p className="text-[#c8d8f0] text-xs leading-relaxed">{c.check}</p>
                       <p className="text-[#3a5080] text-[10px]">Field: <span className="font-mono">{c.resume_field}</span></p>
@@ -1011,7 +1056,7 @@ function ActiveRubricPanel({ config, onEdit }: {
                 {soft.map(c => (
                   <div key={c.check} className="nh-inset flex items-start gap-3 px-4 py-3"
                     style={{ borderColor: "rgba(5,150,105,0.2)" }}>
-                    <span className="text-emerald-400 shrink-0 mt-0.5 text-xs">✅</span>
+                    <CheckCircle2 size={13} className="text-emerald-400 shrink-0 mt-0.5" />
                     <div className="min-w-0 flex-1 space-y-0.5">
                       <p className="text-[#c8d8f0] text-xs leading-relaxed">{c.check}</p>
                       <p className="text-[#3a5080] text-[10px]">Field: <span className="font-mono">{c.resume_field}</span></p>
@@ -1065,7 +1110,7 @@ function ActiveRubricPanel({ config, onEdit }: {
                 {redFlags.map((f: any, i: number) => (
                   <div key={i} className="nh-inset flex items-start gap-3 px-4 py-3"
                     style={{ borderColor: "rgba(245,158,11,0.15)" }}>
-                    <span className="text-amber-400 shrink-0 mt-0.5 text-xs">⚠️</span>
+                    <AlertTriangle size={13} className="text-amber-400 shrink-0 mt-0.5" />
                     <div className="min-w-0 space-y-0.5">
                       <p className="text-[#c8d8f0] text-xs leading-relaxed">{f.check}</p>
                       <p className="text-[#3a5080] text-[10px]">Field: <span className="font-mono">{f.resume_field}</span></p>
@@ -1096,15 +1141,15 @@ function FullEvalProgress({ session }: { session: Session }) {
     <div className="nh-card p-8 space-y-7">
       {isErr ? (
         <>
-          <PageHeader icon="⚠️" title="Evaluation Failed" sub="The background worker encountered an error." />
+          <PageHeader icon={<AlertTriangle size={16} />} title="Evaluation Failed" sub="The background worker encountered an error. Re-click Accept to retry from the last checkpoint." />
           <p className="text-red-400 text-sm">{p.error || "Re-click Accept to resume from the last checkpoint."}</p>
         </>
       ) : (
         <>
           <PageHeader
-            icon="⚡"
-            title={p.status === "queued" ? "Queuing Full Evaluation…" : "Scoring All Candidates"}
-            sub="Gemini is evaluating every candidate against your final rubric. This may take a few minutes."
+            icon={<Zap size={16} />}
+            title={p.status === "queued" ? "Preparing Full Evaluation" : "Scoring All Candidates"}
+            sub="Each candidate is evaluated against your final rubric in parallel. Results are saved progressively."
           />
 
           {/* Progress */}
@@ -1121,7 +1166,7 @@ function FullEvalProgress({ session }: { session: Session }) {
 
           {/* Tip */}
           <div className="nh-inset p-4 flex items-start gap-3">
-            <span className="text-blue-400 shrink-0 mt-0.5">💡</span>
+            <Info size={13} className="text-blue-400 shrink-0 mt-0.5" />
             <p className="text-[#6c80a8] text-xs leading-relaxed">{EVAL_TIPS[tipI]}</p>
           </div>
 
@@ -1147,10 +1192,10 @@ function RubricAuditPanel({ config }: { config: any }) {
     <div className="nh-card overflow-hidden">
       <button onClick={() => setOpen(v => !v)} className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-white/[.015] transition-all">
         <div className="flex items-center gap-3">
-          <span className="text-sm font-semibold text-[#c8d8f0]">🔍 Rubric Audit</span>
+          <span className="text-sm font-semibold text-[#c8d8f0]">Rubric Audit</span>
           <span className="text-[#4a6080] text-xs">{hard} hard · {soft} soft · {pw.length} P0 · {rf.length} flags</span>
         </div>
-        <span className="text-[#3a5080] text-xs">{open ? "▲" : "▼"}</span>
+        {open ? <ChevronUp size={14} className="text-[#3a5080]" /> : <ChevronDown size={14} className="text-[#3a5080]" />}
       </button>
       {open && (
         <div className="px-6 py-6 border-t space-y-5 text-xs" style={{ borderColor: "rgba(96,165,250,0.08)" }}>
@@ -1205,10 +1250,10 @@ function SkippedPanel({ skipped }: { skipped: SkippedInfo }) {
     <div className="nh-card overflow-hidden">
       <button onClick={() => setOpen(v => !v)} className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-white/[.015] transition-all">
         <div className="flex items-center gap-3">
-          <span className="text-sm font-semibold text-[#c8d8f0]">⚠️ Resumes Not Evaluated</span>
+          <span className="text-sm font-semibold text-[#c8d8f0]">Resumes Not Evaluated</span>
           <span className="nh-inset px-2.5 py-1 text-[10px] font-mono text-[#6c80a8]">{total} skipped</span>
         </div>
-        <span className="text-[#3a5080] text-xs">{open ? "▲" : "▼"}</span>
+        {open ? <ChevronUp size={14} className="text-[#3a5080]" /> : <ChevronDown size={14} className="text-[#3a5080]" />}
       </button>
       {open && (
         <div className="px-6 py-6 border-t space-y-5" style={{ borderColor: "rgba(96,165,250,0.08)" }}>
@@ -1216,7 +1261,7 @@ function SkippedPanel({ skipped }: { skipped: SkippedInfo }) {
             Fix unreadable PDFs by re-uploading text-based PDFs. Model-dropped resumes can be retried.
           </p>
           {[
-            { arr: unreadable, icon: "✕", c: "text-red-400",    bg: "rgba(239,68,68,0.05)",   bc: "rgba(239,68,68,0.18)",   t: "Unreadable PDFs"    },
+            { arr: unreadable,   icon: "—", c: "text-red-400",    bg: "rgba(239,68,68,0.05)",   bc: "rgba(239,68,68,0.18)",   t: "Unreadable PDFs" },
             { arr: modelDropped, icon: "?", c: "text-amber-400", bg: "rgba(245,158,11,0.05)", bc: "rgba(245,158,11,0.18)", t: "Dropped by Model"  },
             { arr: sampledOut, icon: "–",  c: "text-[#6c80a8]", bg: "rgba(30,60,120,0.1)",   bc: "rgba(96,165,250,0.1)", t: "Over Cap"            },
           ].filter(x => x.arr.length > 0).map(({ arr, icon, c, bg, bc, t }) => (
@@ -1272,7 +1317,7 @@ function TokenPanel({ totals }: { totals: Record<string, any> }) {
                 <div className="flex items-center gap-3">
                   <span className="text-sm font-medium text-[#c8d8f0]">{name}</span>
                   {row.latency_seconds && (
-                    <span className="nh-inset px-2 py-0.5 text-[10px] font-mono text-[#6c80a8]">⚡ {row.latency_seconds}s</span>
+                    <span className="nh-inset px-2 py-0.5 text-[10px] font-mono text-[#6c80a8]">{row.latency_seconds}s</span>
                   )}
                 </div>
                 <div className="flex items-center gap-6 text-[11px] font-mono">

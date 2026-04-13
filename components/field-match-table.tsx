@@ -7,12 +7,21 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useState, useMemo } from "react";
 import { ResumeDrawer } from "@/components/resume-drawer";
+import {
+  FileText, MessageSquare, Info, ThumbsDown, Check, ChevronDown, ChevronUp,
+  CheckCircle2, X, ExternalLink, Minus,
+} from "lucide-react";
 
 // ── Constants ──────────────────────────────────────────────────────────
 const MATCH_STYLE = {
-  pass:    { icon: "✓", label: "Pass",    cls: "text-emerald-400", bg: "rgba(16,185,129,0.05)", border: "border-l-emerald-500" },
-  fail:    { icon: "✕", label: "Fail",    cls: "text-red-400",     bg: "rgba(239,68,68,0.05)",  border: "border-l-red-500"    },
-  partial: { icon: "~", label: "Partial", cls: "text-amber-400",   bg: "rgba(245,158,11,0.05)", border: "border-l-amber-500"  },
+  pass:    { label: "Pass",    cls: "text-emerald-400", bg: "rgba(16,185,129,0.05)", border: "border-l-emerald-500" },
+  fail:    { label: "Fail",    cls: "text-red-400",     bg: "rgba(239,68,68,0.05)",  border: "border-l-red-500"    },
+  partial: { label: "Partial", cls: "text-amber-400",   bg: "rgba(245,158,11,0.05)", border: "border-l-amber-500"  },
+};
+const MATCH_ICON: Record<string, React.ReactNode> = {
+  pass:    <Check size={10} />,
+  fail:    <X size={10} />,
+  partial: <Minus size={10} />,
 };
 
 const CLASS_CONFIG: Record<string, { bg: string; dot: string }> = {
@@ -61,7 +70,8 @@ function ExpandableText({ text, maxLen = 120, className = "" }: { text: string; 
 
 // ── Field match row ────────────────────────────────────────────────────
 function FieldMatchRow({ fm }: { fm: { field: unknown; value_from_resume: unknown; criteria_checked: unknown; match: "pass" | "fail" | "partial"; note: unknown } }) {
-  const m = MATCH_STYLE[fm.match] ?? { icon: "—", label: "—", cls: "text-[#6c80a8]", bg: "rgba(96,165,250,0.03)", border: "border-l-white/20" };
+  const m = MATCH_STYLE[fm.match] ?? { label: "—", cls: "text-[#6c80a8]", bg: "rgba(96,165,250,0.03)", border: "border-l-white/20" };
+  const mIcon = MATCH_ICON[fm.match] ?? <Minus size={10} />;
   const [open, setOpen] = useState(false);
 
   const field = toStr(fm.field);
@@ -82,7 +92,7 @@ function FieldMatchRow({ fm }: { fm: { field: unknown; value_from_resume: unknow
             {field}
           </span>
           <span className={`text-[11px] font-bold ${m.cls} flex items-center gap-1 shrink-0`}>
-            {m.icon} {m.label}
+            {mIcon} {m.label}
           </span>
           {!open && criteriaChecked && (
             <span className="text-[11px] text-[#4a6080] truncate min-w-0">
@@ -90,7 +100,7 @@ function FieldMatchRow({ fm }: { fm: { field: unknown; value_from_resume: unknow
             </span>
           )}
         </div>
-        <span className="text-[#2a3a5a] text-[10px] shrink-0">{open ? "▲" : "▼"}</span>
+        {open ? <ChevronUp size={12} className="text-[#2a3a5a] shrink-0" /> : <ChevronDown size={12} className="text-[#2a3a5a] shrink-0" />}
       </button>
 
       {open && (
@@ -124,7 +134,7 @@ function P0Signal({ m }: { m: P0Match | string | unknown }) {
   const label = toStr(typeof m === "object" && m !== null && "signal" in (m as object) ? (m as P0Match).signal : m as string);
   return (
     <div className="flex items-start gap-2 text-xs">
-      <span className="text-emerald-400 shrink-0 mt-0.5">✦</span>
+      <CheckCircle2 size={11} className="text-emerald-400 shrink-0 mt-0.5" />
       <span className="text-[#c8d8f0] leading-relaxed"><ExpandableText text={label} maxLen={120} /></span>
     </div>
   );
@@ -135,11 +145,11 @@ function ScoreBar({ score, max = 100 }: { score: number; max?: number }) {
   const pct = Math.min((score / max) * 100, 100);
   const color = pct >= 70 ? "from-emerald-500 to-emerald-400" : pct >= 40 ? "from-blue-500 to-blue-400" : "from-red-500 to-red-400";
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 h-1 rounded-full overflow-hidden" style={{ background: "rgba(96,165,250,0.1)" }}>
+    <div className="flex items-center gap-2.5">
+      <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(96,165,250,0.08)" }}>
         <div className={`h-full bg-gradient-to-r ${color} rounded-full transition-all`} style={{ width: `${pct}%` }} />
       </div>
-      <span className="text-[11px] font-mono font-bold text-[#6c80a8] w-8 text-right">{score}</span>
+      <span className="text-xs font-mono font-bold text-[#6c80a8] w-7 text-right">{score}</span>
     </div>
   );
 }
@@ -161,9 +171,14 @@ function CandidateCard({ c, rank, onFeedback, onViewResume }: {
   const clsCfg = CLASS_CONFIG[cls] ?? { bg: "bg-white/[.06] text-[#c8d8f0] border border-white/10", dot: "bg-[#6c80a8]" };
 
   const cardBorder =
-    cls === "P0"       ? "border-emerald-500/20 hover:border-emerald-500/40" :
+    cls === "P0"       ? "border-emerald-500/20 hover:border-emerald-500/35" :
     cls === "Baseline" ? "border-blue-500/15 hover:border-blue-500/30" :
-                         "border-white/[.06] hover:border-white/[.12]";
+                         "border-white/[.06] hover:border-white/[.10]";
+
+  const cardLeftAccent =
+    cls === "P0"       ? "3px solid #10b981" :
+    cls === "Baseline" ? "3px solid #4f6ef7" :
+                         "3px solid rgba(100,116,139,0.3)";
 
   function handleSubmitFeedback(e: React.MouseEvent) {
     e.stopPropagation();
@@ -175,7 +190,10 @@ function CandidateCard({ c, rank, onFeedback, onViewResume }: {
   }
 
   return (
-    <div className={`nh-card border overflow-hidden transition-all ${cardBorder}`}>
+    <div
+      className={`nh-card border overflow-hidden transition-all ${cardBorder}`}
+      style={{ borderLeft: cardLeftAccent }}
+    >
       {/* Card header */}
       <div
         onClick={() => setOpen(v => !v)}
@@ -196,7 +214,7 @@ function CandidateCard({ c, rank, onFeedback, onViewResume }: {
             <span className={`text-[9px] px-1.5 py-0.5 rounded-full border font-semibold shrink-0 ${
               c.confidence === "low" ? "border-red-500/30 text-red-400" : "border-amber-500/30 text-amber-400"
             }`}>
-              {c.confidence === "low" ? "⚠ low" : "~ mid"} confidence
+              {c.confidence === "low" ? "low" : "mid"} confidence
             </span>
           )}
 
@@ -213,7 +231,7 @@ function CandidateCard({ c, rank, onFeedback, onViewResume }: {
               className="flex items-center gap-1 text-[10px] font-semibold text-[#6c80a8] hover:text-blue-300 px-2 py-0.5 rounded transition-all shrink-0"
               style={{ background: "rgba(96,165,250,0.06)", border: "1px solid rgba(96,165,250,0.15)" }}
             >
-              📄 Resume
+              <FileText size={10} /> Resume
             </button>
           )}
 
@@ -227,7 +245,7 @@ function CandidateCard({ c, rank, onFeedback, onViewResume }: {
               }`}
               style={{ background: feedbackSubmitted ? "rgba(16,185,129,0.06)" : "rgba(96,165,250,0.04)" }}
             >
-              {feedbackSubmitted ? "✓ Sent" : "👎 Disagree"}
+              {feedbackSubmitted ? <><Check size={11} /> Sent</> : <><ThumbsDown size={10} /> Disagree</>}
             </button>
           )}
         </div>
@@ -238,7 +256,7 @@ function CandidateCard({ c, rank, onFeedback, onViewResume }: {
               <ScoreBar score={c.overall_score} />
             </div>
           )}
-          <span className="text-[#2a3a5a] text-xs">{open ? "▲" : "▼"}</span>
+          {open ? <ChevronUp size={13} className="text-[#2a3a5a]" /> : <ChevronDown size={13} className="text-[#2a3a5a]" />}
         </div>
       </div>
 
@@ -289,7 +307,7 @@ function CandidateCard({ c, rank, onFeedback, onViewResume }: {
           {/* Reasoning */}
           {c.reasoning && (
             <div className="flex gap-3">
-              <span className="text-[#3a5080] mt-0.5 shrink-0">💬</span>
+              <MessageSquare size={13} className="text-[#3a5080] mt-0.5 shrink-0" />
               <p className="text-xs text-[#a8b8d8] leading-relaxed italic">
                 <ExpandableText text={toStr(c.reasoning)} maxLen={300} />
               </p>
@@ -301,7 +319,7 @@ function CandidateCard({ c, rank, onFeedback, onViewResume }: {
             <div className="nh-inset p-3 space-y-1" style={{ borderColor: "rgba(239,68,68,0.2)", background: "rgba(239,68,68,0.05)" }}>
               <p className="text-[10px] font-semibold text-red-400 uppercase tracking-wider mb-2">Baseline Failures</p>
               {c.baseline_failures.map((f, i) => (
-                <p key={i} className="text-xs text-red-300 leading-relaxed">• <ExpandableText text={toStr(f)} maxLen={150} /></p>
+                <p key={i} className="text-xs text-red-300 leading-relaxed flex gap-1.5 items-start"><span className="text-red-400 shrink-0 mt-0.5">-</span><ExpandableText text={toStr(f)} maxLen={150} /></p>
               ))}
             </div>
           )}
@@ -309,9 +327,9 @@ function CandidateCard({ c, rank, onFeedback, onViewResume }: {
           {/* Red flags */}
           {c.red_flags_found && c.red_flags_found.length > 0 && (
             <div className="nh-inset p-3 space-y-1" style={{ borderColor: "rgba(249,115,22,0.15)", background: "rgba(249,115,22,0.04)" }}>
-              <p className="text-[10px] font-semibold text-orange-400 uppercase tracking-wider mb-2">🚩 Red Flags</p>
+              <p className="text-[10px] font-semibold text-orange-400 uppercase tracking-wider mb-2">Red Flags</p>
               {c.red_flags_found.map((f, i) => (
-                <p key={i} className="text-xs text-orange-300 leading-relaxed">• <ExpandableText text={toStr(f)} maxLen={150} /></p>
+                <p key={i} className="text-xs text-orange-300 leading-relaxed flex gap-1.5 items-start"><span className="text-orange-400 shrink-0 mt-0.5">-</span><ExpandableText text={toStr(f)} maxLen={150} /></p>
               ))}
             </div>
           )}
@@ -319,7 +337,7 @@ function CandidateCard({ c, rank, onFeedback, onViewResume }: {
           {/* P0 signals matched */}
           {c.p0_matches && c.p0_matches.length > 0 && (
             <div className="space-y-2">
-              <p className="text-[10px] font-semibold text-[#4a6080] uppercase tracking-wider">🎯 P0 Signals Matched</p>
+              <p className="text-[10px] font-semibold text-[#4a6080] uppercase tracking-wider">P0 Signals Matched</p>
               <div className="space-y-1.5">
                 {c.p0_matches.map((m, i) => <P0Signal key={i} m={m} />)}
               </div>
@@ -329,9 +347,9 @@ function CandidateCard({ c, rank, onFeedback, onViewResume }: {
           {/* Extra param matches */}
           {c.extra_param_matches && c.extra_param_matches.length > 0 && (
             <div className="space-y-1.5">
-              <p className="text-[10px] font-semibold text-[#4a6080] uppercase tracking-wider">✨ Extra Parameters</p>
+              <p className="text-[10px] font-semibold text-[#4a6080] uppercase tracking-wider">Extra Parameters</p>
               {c.extra_param_matches.map((m, i) => (
-                <p key={i} className="text-xs text-[#a8b8d8]">• <ExpandableText text={toStr(m)} maxLen={120} /></p>
+                <p key={i} className="text-xs text-[#a8b8d8] flex gap-1.5 items-start"><span className="text-[#3a5080] shrink-0 mt-0.5">-</span><ExpandableText text={toStr(m)} maxLen={120} /></p>
               ))}
             </div>
           )}
@@ -339,7 +357,7 @@ function CandidateCard({ c, rank, onFeedback, onViewResume }: {
           {/* Field-level breakdown */}
           {c.field_matches && c.field_matches.length > 0 && (
             <div className="space-y-2">
-              <p className="text-[10px] font-semibold text-[#4a6080] uppercase tracking-wider">📋 Field-Level Breakdown</p>
+              <p className="text-[10px] font-semibold text-[#4a6080] uppercase tracking-wider">Field-Level Breakdown</p>
               <div className="space-y-1.5">
                 {c.field_matches.map((fm, i) => <FieldMatchRow key={i} fm={fm} />)}
               </div>
@@ -426,15 +444,14 @@ export function FieldMatchTable({
         {/* Summary stats */}
         <div className="grid grid-cols-4 gap-3">
           {[
-            { label: "Total",    value: summary.total_evaluated, color: "text-white",        dot: "nh-dot-blue"   },
-            { label: "P0",       value: summary.p0_count,        color: "text-emerald-400",  dot: "nh-dot-green"  },
-            { label: "Baseline", value: summary.baseline_count,  color: "text-blue-400",     dot: "nh-dot-blue"   },
-            { label: "Reject",   value: summary.reject_count,    color: "text-red-400",      dot: "nh-dot-red"    },
-          ].map(({ label, value, color, dot }) => (
-            <div key={label} className="nh-card p-4 text-center">
+            { label: "Total",    value: summary.total_evaluated, color: "text-white",       accent: "rgba(79,110,247,0.5)"  },
+            { label: "P0",       value: summary.p0_count,        color: "text-emerald-400", accent: "rgba(16,185,129,0.5)"  },
+            { label: "Baseline", value: summary.baseline_count,  color: "text-blue-400",    accent: "rgba(79,110,247,0.5)"  },
+            { label: "Reject",   value: summary.reject_count,    color: "text-red-400",     accent: "rgba(239,68,68,0.5)"   },
+          ].map(({ label, value, color, accent }) => (
+            <div key={label} className="nh-card p-5 text-center" style={{ borderTop: `2px solid ${accent}` }}>
               <div className={`text-3xl font-black font-mono ${color}`}>{value}</div>
-              <div className="text-[#4a6080] text-[10px] mt-1.5 uppercase tracking-widest flex items-center justify-center gap-1.5">
-                <span className={dot} />
+              <div className="text-[#566b99] text-[10px] mt-2 uppercase tracking-widest">
                 {label}
               </div>
             </div>
@@ -467,7 +484,7 @@ export function FieldMatchTable({
         {/* All-reject warning */}
         {allReject && (
           <div className="nh-inset px-4 py-3 flex items-start gap-3">
-            <span className="text-[#6c80a8] shrink-0 mt-0.5">ℹ️</span>
+            <Info size={14} className="text-[#6c80a8] shrink-0 mt-0.5" />
             <div className="space-y-0.5">
               <p className="text-xs font-semibold text-[#c8d8f0]">None of these candidates meet the baseline</p>
               <p className="text-xs text-[#4a6080] leading-relaxed">
