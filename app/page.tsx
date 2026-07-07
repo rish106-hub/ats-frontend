@@ -1,500 +1,437 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { api, type Session } from "@/lib/api";
 import {
-  Plus, Clock, ChevronRight, Sparkles,
-  AlertCircle, Trash2, X, AlertTriangle, TrendingUp,
+  AlertCircle,
+  ArrowRight,
+  BriefcaseBusiness,
+  CheckCircle2,
+  ClipboardList,
+  Clock3,
+  FileText,
+  Gauge,
+  Layers3,
+  Loader2,
+  Plus,
+  Radar,
+  Sparkles,
+  Trash2,
+  TriangleAlert,
+  UsersRound,
+  X,
 } from "lucide-react";
 
-/* ── Status config ──────────────────────────────────────────────────── */
-type StatusCfg = { label: string; color: string; pulse: boolean; group: string };
-const STATUS: Record<string, StatusCfg> = {
-  created:           { label: "Empty",         color: "#64748b", pulse: false, group: "empty"    },
-  jd_analyzed:       { label: "JD Done",       color: "#06b6d4", pulse: false, group: "progress" },
-  resumes_uploaded:  { label: "Resumes Ready", color: "#8b5cf6", pulse: false, group: "progress" },
-  rubric_ready:      { label: "Rubric Ready",  color: "#8b5cf6", pulse: false, group: "progress" },
-  preview_active:    { label: "Previewing",    color: "#4f6ef7", pulse: true,  group: "active"   },
-  running_full_eval: { label: "Evaluating",    color: "#4f6ef7", pulse: true,  group: "active"   },
-  completed:         { label: "Complete",      color: "#10b981", pulse: false, group: "done"     },
+type StatusTone = {
+  label: string;
+  desk: string;
+  action: string;
+  tone: string;
+  bg: string;
+  border: string;
 };
 
-const GROUP_ORDER = ["active", "progress", "done", "empty"];
-const GROUP_LABELS: Record<string, string> = {
-  active: "Live", progress: "In Progress", done: "Completed", empty: "New",
+const STATUS: Record<string, StatusTone> = {
+  created: {
+    label: "Needs JD",
+    desk: "Draft the role brief",
+    action: "Add JD",
+    tone: "#f59e0b",
+    bg: "rgba(245,158,11,.08)",
+    border: "rgba(245,158,11,.22)",
+  },
+  jd_analyzed: {
+    label: "Needs resumes",
+    desk: "Upload candidate batch",
+    action: "Upload resumes",
+    tone: "#38bdf8",
+    bg: "rgba(14,165,233,.08)",
+    border: "rgba(14,165,233,.22)",
+  },
+  resumes_uploaded: {
+    label: "Ready to calibrate",
+    desk: "Start model calibration",
+    action: "Calibrate",
+    tone: "#22c55e",
+    bg: "rgba(34,197,94,.08)",
+    border: "rgba(34,197,94,.22)",
+  },
+  rubric_ready: {
+    label: "Rubric ready",
+    desk: "Review first candidates",
+    action: "Start review",
+    tone: "#22c55e",
+    bg: "rgba(34,197,94,.08)",
+    border: "rgba(34,197,94,.22)",
+  },
+  preview_active: {
+    label: "Calibration live",
+    desk: "Tune the shortlist logic",
+    action: "Review queue",
+    tone: "#f97316",
+    bg: "rgba(249,115,22,.08)",
+    border: "rgba(249,115,22,.22)",
+  },
+  running_full_eval: {
+    label: "Shortlist running",
+    desk: "Monitor the final run",
+    action: "Track run",
+    tone: "#06b6d4",
+    bg: "rgba(6,182,212,.08)",
+    border: "rgba(6,182,212,.22)",
+  },
+  completed: {
+    label: "Decision packet ready",
+    desk: "Review final shortlist",
+    action: "Open results",
+    tone: "#a3e635",
+    bg: "rgba(163,230,53,.08)",
+    border: "rgba(163,230,53,.22)",
+  },
 };
 
-/* ── Confirm delete modal ───────────────────────────────────────────── */
-function ConfirmDelete({ name, onConfirm, onCancel, deleting }: {
-  name: string; onConfirm: () => void; onCancel: () => void; deleting: boolean;
-}) {
+const FALLBACK = STATUS.created;
+
+function roleName(session: Session) {
+  return String((session.jd_analysis as any)?.role || "Untitled hiring role");
+}
+
+function roleBrief(session: Session) {
+  return String((session.jd_analysis as any)?.one_liner || "Create the role brief, upload resumes, calibrate the model, then run the shortlist.");
+}
+
+function statusFor(session: Session) {
+  return STATUS[session.status] || FALLBACK;
+}
+
+function candidatesNeedingWork(session: Session) {
+  if (session.status === "created") return "JD missing";
+  if (["jd_analyzed", "rubric_ready"].includes(session.status)) return "Resume batch missing";
+  if (session.status === "resumes_uploaded") return "Calibration not started";
+  if (session.status === "preview_active") return "Recruiter review needed";
+  if (session.status === "running_full_eval") return "Final run in progress";
+  return "Shortlist ready";
+}
+
+function DeskSignal({ label, value }: { label: string; value: string }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
-      <div
-        className="absolute inset-0 backdrop-blur-sm"
-        style={{ background: "rgba(2,9,23,0.85)" }}
-        onClick={onCancel}
-      />
-      <div
-        className="relative rounded-2xl p-8 max-w-sm w-full space-y-6 nh-scale-in"
-        style={{ background: "rgba(5,11,30,0.98)", border: "1px solid rgba(239,68,68,0.2)" }}
-      >
-        <button
-          onClick={onCancel}
-          className="absolute top-5 right-5 text-[#3a5080] hover:text-[#6c80a8] transition-colors"
-        >
-          <X size={14} />
-        </button>
-        <div className="space-y-3">
-          <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center"
-            style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.18)" }}
-          >
-            <AlertTriangle size={16} className="text-red-400" />
-          </div>
-          <div>
-            <h3 className="text-white font-semibold text-sm">Delete this session?</h3>
-            <p className="text-[#566b99] text-xs leading-relaxed mt-1">
-              <span className="text-[#8899b8]">{name}</span> and all its data will be permanently removed.
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-3">
-          <button
-            onClick={onCancel}
-            className="flex-1 py-2.5 text-sm text-[#566b99] rounded-xl border transition-colors hover:text-[#8899b8]"
-            style={{ borderColor: "rgba(96,165,250,0.12)", background: "rgba(96,165,250,0.03)" }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            disabled={deleting}
-            className="flex-1 py-2.5 text-sm font-medium rounded-xl flex items-center justify-center gap-2 transition-all"
-            style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)", color: "#f87171" }}
-          >
-            {deleting
-              ? <span className="w-4 h-4 rounded-full border-2 border-red-400/20 border-t-red-400 animate-spin" />
-              : <><Trash2 size={12} /> Delete</>}
-          </button>
-        </div>
-      </div>
+    <div className="min-w-0 rounded-lg border border-white/10 bg-white/[.06] px-3 py-2">
+      <p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#c7b18b]">{label}</p>
+      <p className="mt-1 truncate text-sm font-black text-white" title={value}>{value}</p>
     </div>
   );
 }
 
-/* ── Skeleton loader ────────────────────────────────────────────────── */
-function Skeleton() {
-  return (
-    <div className="space-y-3">
-      {[1, 2, 3].map(i => (
-        <div key={i} className="h-[72px] rounded-2xl nh-shimmer" style={{ opacity: 1 - i * 0.2 }} />
-      ))}
-    </div>
-  );
-}
-
-/* ══════════════════════════════════════════════════════════════════════
-   HOME PAGE
-══════════════════════════════════════════════════════════════════════ */
 export default function HomePage() {
   const router = useRouter();
-  const [sessions, setSessions]           = useState<Session[]>([]);
-  const [loading, setLoading]             = useState(true);
-  const [creating, setCreating]           = useState(false);
-  const [error, setError]                 = useState("");
-  const [serverOk, setServerOk]           = useState<boolean | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<Session | null>(null);
-  const [deleting, setDeleting]           = useState(false);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [deskNote, setDeskNote] = useState("");
 
   useEffect(() => {
     api.listSessions()
-      .then(d => { setSessions(d); setServerOk(true); })
-      .catch(() => { setError("Backend unreachable — start it on port 8000."); setServerOk(false); })
+      .then(setSessions)
+      .catch(() => setError("Backend is not reachable on the configured API URL."))
       .finally(() => setLoading(false));
   }, []);
 
-  async function createNew() {
+  useEffect(() => {
+    setDeskNote(window.localStorage.getItem("nexthire:hiring-desk-note") || "");
+  }, []);
+
+  function updateDeskNote(value: string) {
+    setDeskNote(value);
+    window.localStorage.setItem("nexthire:hiring-desk-note", value);
+  }
+
+  async function createRole() {
     setCreating(true);
+    setError("");
     try {
-      const s = await api.createSession();
-      router.push(`/sessions/${s.id}`);
-    } catch {
-      setError("Failed to create session.");
+      const session = await api.createSession();
+      router.push(`/sessions/${session.id}`);
+    } catch (e) {
+      setError((e as Error).message || "Could not create role.");
       setCreating(false);
     }
   }
 
-  async function confirmDelete() {
-    if (!pendingDelete) return;
-    setDeleting(true);
+  async function deleteRole(session: Session) {
+    setDeletingId(session.id);
     try {
-      await api.deleteSession(pendingDelete.id);
-      setSessions(p => p.filter(s => s.id !== pendingDelete.id));
-    } catch {
-      setError("Delete failed — try again.");
+      await api.deleteSession(session.id);
+      setSessions((items) => items.filter((item) => item.id !== session.id));
+    } catch (e) {
+      setError((e as Error).message || "Delete failed.");
     } finally {
-      setDeleting(false);
-      setPendingDelete(null);
+      setDeletingId(null);
     }
   }
 
-  const grouped = GROUP_ORDER.reduce<Record<string, Session[]>>((acc, g) => {
-    acc[g] = sessions.filter(s => (STATUS[s.status]?.group ?? "empty") === g);
-    return acc;
-  }, {});
+  const desk = useMemo(() => {
+    const needsJd = sessions.filter((s) => s.status === "created").length;
+    const needsCalibration = sessions.filter((s) => ["resumes_uploaded", "rubric_ready", "preview_active"].includes(s.status)).length;
+    const ready = sessions.filter((s) => s.status === "completed").length;
+    return [
+      { label: "Needs role brief", value: needsJd, icon: FileText, tone: "#f59e0b", copy: "Draft the JD before resumes enter the review lane." },
+      { label: "Needs calibration", value: needsCalibration, icon: Radar, tone: "#22c55e", copy: "Review evidence and teach the model what good looks like." },
+      { label: "Ready for decision", value: ready, icon: CheckCircle2, tone: "#a3e635", copy: "Open final shortlists and inspect evidence before outreach." },
+    ];
+  }, [sessions]);
 
-  const active    = grouped.active?.length ?? 0;
-  const completed = grouped.done?.length ?? 0;
-  const total     = sessions.length;
+  const activeRoles = sessions.filter((s) => s.status !== "completed");
+  const completedRoles = sessions.filter((s) => s.status === "completed");
+  const ordered = [...activeRoles, ...completedRoles];
+  const focusRole = ordered.find((s) => ["preview_active", "resumes_uploaded", "rubric_ready"].includes(s.status)) || ordered[0];
+  const focusStatus = focusRole ? statusFor(focusRole) : null;
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: "#020912" }}>
-
-      {/* ── Nav ─────────────────────────────────────────────────────── */}
-      <nav
-        className="sticky top-0 z-50 border-b"
-        style={{ borderColor: "rgba(79,110,247,0.08)", background: "rgba(2,9,18,0.92)", backdropFilter: "blur(20px)" }}
-      >
-        <div className="max-w-4xl mx-auto px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div
-              className="w-6 h-6 rounded-lg flex items-center justify-center"
-              style={{ background: "linear-gradient(135deg,#4f6ef7,#06b6d4)" }}
+    <main className="min-h-screen bg-[#f5f2ea] text-[#151411]">
+      <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[248px_minmax(0,1fr)]">
+        <aside className="border-b border-[#ded8cc] bg-[#f9f7f1] px-5 py-5 lg:border-b-0 lg:border-r lg:py-6">
+          <div className="flex items-center justify-between gap-4 lg:block">
+            <button onClick={() => router.push("/")} className="flex items-center gap-3 text-left">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#151411] text-white">
+                <Sparkles size={16} />
+              </span>
+              <span>
+                <span className="block text-sm font-black tracking-tight">NextHire</span>
+                <span className="block text-[11px] text-[#777064]">Recruiter cockpit</span>
+              </span>
+            </button>
+            <button
+              onClick={createRole}
+              disabled={creating}
+              className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#151411] px-3 text-xs font-semibold text-white transition hover:bg-[#2a2823] disabled:opacity-60 lg:mt-8 lg:w-full lg:justify-center"
             >
-              <Sparkles size={11} className="text-white" />
-            </div>
-            <span className="font-bold text-white text-sm tracking-tight">NextHire</span>
+              {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+              New role
+            </button>
           </div>
 
-          <div className="flex items-center gap-4">
-            {serverOk !== null && (
-              <div className="flex items-center gap-1.5">
-                <span
-                  className={`w-1.5 h-1.5 rounded-full ${serverOk ? "bg-emerald-400" : "bg-red-400"}`}
-                  style={serverOk ? { boxShadow: "0 0 5px rgba(16,185,129,0.7)" } : {}}
-                />
-                <span className="text-[#566b99] text-[11px] hidden sm:block">
-                  {serverOk ? "Connected" : "Offline"}
-                </span>
+          <nav className="mt-6 hidden space-y-1 lg:block">
+            {[
+              { label: "Hiring desk", icon: BriefcaseBusiness, active: true },
+              { label: "Review queues", icon: UsersRound },
+              { label: "Calibration", icon: Gauge },
+              { label: "Decision packets", icon: ClipboardList },
+            ].map((item) => (
+              <div
+                key={item.label}
+                className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${item.active ? "bg-[#ede7da] text-[#151411]" : "text-[#777064]"}`}
+              >
+                <item.icon size={15} />
+                {item.label}
+              </div>
+            ))}
+          </nav>
+
+          <div className="mt-6 hidden rounded-xl border border-[#ded8cc] bg-white p-4 lg:block">
+            <p className="text-xs font-bold uppercase tracking-[.18em] text-[#9b6a2f]">Today</p>
+            <p className="mt-2 text-sm leading-5 text-[#4d473d]">Start with roles blocked by missing evidence, not vanity counters.</p>
+          </div>
+        </aside>
+
+        <section className="px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
+          <div className="mx-auto flex max-w-7xl flex-col gap-5">
+            <header className="grid gap-4">
+              <div className="rounded-2xl border border-[#ded8cc] bg-[#151411] p-4 text-white shadow-sm sm:p-5">
+                <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold uppercase tracking-[.18em] text-[#c7b18b]">Recruiter command center</p>
+                    <h1 className="mt-2 truncate text-2xl font-black tracking-tight sm:text-3xl">
+                      Today's hiring desk
+                    </h1>
+                    <p className="mt-2 max-w-2xl text-sm leading-5 text-[#d6d0c5]">
+                      Work the next blocked role, capture context, then move into calibration or shortlist review.
+                    </p>
+                    <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                      <DeskSignal label="Focus" value={focusRole ? focusStatus?.label || "Open role" : "Create role"} />
+                      <DeskSignal label="Queue" value={focusRole ? candidatesNeedingWork(focusRole) : "No active roles"} />
+                      <DeskSignal label="Action" value={focusStatus?.action || "New role"} />
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/[.06] p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold uppercase tracking-[.16em] text-[#c7b18b]">Recruiter scratchpad</p>
+                        <p className="mt-1 truncate text-xs text-[#d6d0c5]">Role context, hiring manager notes, or must-check criteria.</p>
+                      </div>
+                      <button
+                        onClick={() => focusRole ? router.push(`/sessions/${focusRole.id}`) : createRole()}
+                        disabled={creating}
+                        className="shrink-0 rounded-lg bg-white px-3 py-2 text-xs font-black text-[#151411] disabled:opacity-60"
+                      >
+                        {focusStatus?.action || "New role"}
+                      </button>
+                    </div>
+                    <textarea
+                      value={deskNote}
+                      onChange={(e) => updateDeskNote(e.target.value)}
+                      rows={3}
+                      placeholder="Example: prioritize PM ownership, consumer launch proof, and stakeholder evidence."
+                      className="mt-3 w-full resize-none rounded-lg border border-white/15 bg-white/[.08] px-3 py-2 text-sm text-white placeholder:text-[#a9a296] focus:border-white/40 focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {desk.map((item) => (
+                  <div key={item.label} className="rounded-2xl border border-[#ded8cc] bg-white p-4 shadow-sm">
+                    <div className="flex items-start gap-3">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ background: `${item.tone}18`, color: item.tone }}>
+                        <item.icon size={17} />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex items-baseline gap-2">
+                          <p className="text-2xl font-black leading-none">{item.value}</p>
+                          <p className="truncate text-xs font-semibold text-[#5f584e]">{item.label}</p>
+                        </div>
+                        <p className="mt-1 text-xs leading-5 text-[#777064]">{item.copy}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </header>
+
+            {error && (
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <span className="flex items-center gap-2"><AlertCircle size={15} /> {error}</span>
+                <button onClick={() => setError("")}><X size={14} /></button>
               </div>
             )}
-            <button
-              onClick={createNew}
-              disabled={creating}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white transition-all disabled:opacity-60"
-              style={{ background: "linear-gradient(135deg,#4f6ef7,#3b57db)", boxShadow: "0 0 20px rgba(79,110,247,0.25)" }}
-            >
-              {creating
-                ? <span className="w-3 h-3 rounded-full border border-white/30 border-t-white animate-spin" />
-                : <Plus size={12} />}
-              New Session
-            </button>
-          </div>
-        </div>
-      </nav>
 
-      {/* ── Hero ────────────────────────────────────────────────────── */}
-      <section className="max-w-4xl mx-auto w-full px-6 pt-12 pb-10">
-        <div className="flex items-center justify-between gap-8 nh-fade-up">
-
-          {/* Left: text + CTA */}
-          <div className="space-y-6 flex-1 min-w-0">
-            <div className="space-y-3 max-w-xl">
-              <h1 className="text-4xl sm:text-5xl font-black tracking-tight leading-[1.08] text-white">
-                Stop guessing.<br />
-                <span style={{
-                  background: "linear-gradient(90deg,#4f6ef7,#06b6d4)",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                }}>
-                  Start scoring.
-                </span>
-              </h1>
-              <p className="text-[#566b99] text-base leading-relaxed">
-                AI screening that scores every resume against a structured rubric — objective, iterative, and bias-free.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-5">
-              <button
-                onClick={createNew}
-                disabled={creating}
-                className="nh-btn-primary flex items-center gap-2 px-6 py-3 text-sm"
-              >
-                {creating
-                  ? <span className="w-4 h-4 rounded-full border-2 border-white/20 border-t-white animate-spin" />
-                  : <Plus size={14} />}
-                {creating ? "Creating…" : "New Screening Session"}
-              </button>
-
-              {!loading && total > 0 && (
-                <div className="flex items-center gap-3 text-xs">
-                  <span className="text-[#3a5080]">{total} session{total !== 1 ? "s" : ""}</span>
-                  {active > 0 && (
-                    <span className="flex items-center gap-1 text-blue-400 font-medium">
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-                      {active} active
-                    </span>
-                  )}
-                  {completed > 0 && (
-                    <span className="text-emerald-500 font-medium">{completed} done</span>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Right: AI brain visual */}
-          <div className="hidden md:block shrink-0 nh-float relative">
-            {/* Ambient glow behind the circle */}
-            <div
-              className="absolute inset-0"
-              style={{
-                borderRadius: "50%",
-                background: "radial-gradient(circle, rgba(79,110,247,0.28) 0%, transparent 70%)",
-                filter: "blur(24px)",
-                transform: "scale(1.4)",
-              }}
-            />
-            {/* Circular image clip */}
-            <div
-              className="relative overflow-hidden"
-              style={{
-                width: 210,
-                height: 210,
-                borderRadius: "50%",
-                border: "1px solid rgba(79,110,247,0.28)",
-                boxShadow: "0 0 0 4px rgba(79,110,247,0.06), 0 0 40px rgba(79,110,247,0.2)",
-              }}
-            >
-              <Image
-                src="/ai-brain.png"
-                alt="AI-powered screening"
-                width={210}
-                height={210}
-                priority
-              />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Sessions ────────────────────────────────────────────────── */}
-      <main className="flex-1 max-w-4xl mx-auto w-full px-6 pb-16">
-
-        {/* Error banner */}
-        {error && (
-          <div
-            className="mb-8 flex items-center gap-3 px-5 py-3.5 rounded-xl"
-            style={{ background: "rgba(239,68,68,0.05)", border: "1px solid rgba(239,68,68,0.15)" }}
-          >
-            <AlertCircle size={13} className="text-red-400 shrink-0" />
-            <p className="text-red-400 text-xs flex-1">{error}</p>
-            <button onClick={() => setError("")}>
-              <X size={12} className="text-red-700 hover:text-red-400" />
-            </button>
-          </div>
-        )}
-
-        {loading && <Skeleton />}
-
-        {/* Empty state */}
-        {!loading && sessions.length === 0 && !error && (
-          <div className="flex flex-col items-center py-16 space-y-8 nh-fade-up">
-            <div className="text-center space-y-2">
-              <p className="text-white font-semibold text-lg">No sessions yet</p>
-              <p className="text-[#3a5080] text-sm leading-relaxed max-w-xs mx-auto">
-                Create a screening session to start evaluating candidates with AI precision.
-              </p>
-            </div>
-
-            <button
-              onClick={createNew}
-              disabled={creating}
-              className="nh-btn-primary flex items-center gap-2 px-7 py-3 text-sm"
-            >
-              <Plus size={14} /> {creating ? "Creating…" : "Create Your First Session"}
-            </button>
-
-            {/* Product preview */}
-            <div className="relative mt-4 w-full max-w-lg mx-auto">
-              <div
-                className="rounded-2xl overflow-hidden"
-                style={{
-                  border: "1px solid rgba(79,110,247,0.15)",
-                  boxShadow: "0 0 60px rgba(79,110,247,0.12), 0 24px 80px rgba(0,0,0,0.5)",
-                }}
-              >
-                <Image
-                  src="/scoring-dashboard.png"
-                  alt="Candidate scoring dashboard preview"
-                  width={600}
-                  height={600}
-                  className="w-full opacity-75"
-                />
-              </div>
-              {/* Fade gradient at bottom */}
-              <div
-                className="absolute bottom-0 left-0 right-0 h-24 rounded-b-2xl"
-                style={{ background: "linear-gradient(to top, #020912 0%, transparent 100%)" }}
-              />
-              <p className="absolute bottom-4 left-0 right-0 text-center text-[#2a3a5a] text-xs">
-                Your candidate results will look like this
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Session groups */}
-        {!loading && sessions.length > 0 && (
-          <div className="space-y-10">
-            {GROUP_ORDER.map(g => {
-              const grp = grouped[g];
-              if (!grp?.length) return null;
-              return (
-                <div key={g}>
-                  {/* Group header */}
-                  <div className="flex items-center gap-3 mb-4">
-                    <span className="text-xs font-semibold uppercase tracking-widest text-[#566b99]">
-                      {GROUP_LABELS[g]}
-                    </span>
-                    <span
-                      className="text-[10px] font-mono text-[#3a5080] px-1.5 py-0.5 rounded"
-                      style={{ background: "rgba(79,110,247,0.06)" }}
-                    >
-                      {grp.length}
-                    </span>
-                    <div className="flex-1 h-px" style={{ background: "rgba(79,110,247,0.07)" }} />
+            <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+              <section className="rounded-2xl border border-[#ded8cc] bg-white shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#ebe5d9] px-4 py-4 sm:px-5">
+                  <div>
+                    <h2 className="text-base font-black">Hiring roles</h2>
+                    <p className="mt-1 text-xs text-[#777064]">Every card has a job: unblock JD, calibrate candidates, or inspect the shortlist.</p>
                   </div>
+                  <button
+                    onClick={createRole}
+                    disabled={creating}
+                    className="inline-flex items-center gap-2 rounded-lg border border-[#151411] bg-[#151411] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#2a2823] disabled:opacity-60"
+                  >
+                    {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                    Create role
+                  </button>
+                </div>
 
-                  {/* Cards */}
-                  <div className="space-y-2.5">
-                    {grp.map((session, i) => {
-                      const jd      = session.jd_analysis as Record<string, unknown> | null;
-                      const role    = jd ? String(jd.role ?? "Unnamed Role") : "New Session";
-                      const cfg     = STATUS[session.status] ?? STATUS.created;
-                      const date    = new Date(session.created_at);
-                      const dateStr = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-                      const iters   = session.preview_iteration_count;
-
+                {loading ? (
+                  <div className="grid gap-3 p-4 sm:p-5">
+                    {[0, 1, 2].map((i) => <div key={i} className="h-28 animate-pulse rounded-xl bg-[#f0ece3]" />)}
+                  </div>
+                ) : ordered.length === 0 ? (
+                  <div className="grid min-h-[360px] place-items-center p-6 text-center">
+                    <div className="max-w-sm">
+                      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[#ede7da] text-[#151411]"><BriefcaseBusiness size={21} /></div>
+                      <h3 className="mt-4 text-lg font-black">Create your first hiring role</h3>
+                      <p className="mt-2 text-sm leading-6 text-[#777064]">Start with a JD. The workspace will guide you through resumes, calibration, and the final shortlist.</p>
+                      <button onClick={createRole} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#151411] px-4 py-2 text-sm font-semibold text-white">
+                        <Plus size={15} /> New role
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid gap-3 p-4 sm:p-5">
+                    {ordered.map((session) => {
+                      const status = statusFor(session);
+                      const date = new Date(session.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+                      const preview = session.preview_field_results?.summary;
+                      const final = session.full_results?.summary;
+                      const summary = final || preview;
                       return (
-                        <div
-                          key={session.id}
-                          onClick={() => router.push(`/sessions/${session.id}`)}
-                          className="group flex items-center gap-5 px-5 py-4 rounded-2xl cursor-pointer transition-all nh-fade-up"
-                          style={{
-                            animationDelay: `${i * 40}ms`,
-                            background: "rgba(6,13,38,0.55)",
-                            border: "1px solid rgba(79,110,247,0.07)",
-                            borderLeft: `3px solid ${cfg.color}`,
-                          }}
-                          onMouseEnter={e => {
-                            const el = e.currentTarget as HTMLElement;
-                            el.style.background = "rgba(10,20,55,0.72)";
-                            el.style.boxShadow = `0 4px 24px rgba(0,0,0,0.35), 0 0 0 1px ${cfg.color}18`;
-                          }}
-                          onMouseLeave={e => {
-                            const el = e.currentTarget as HTMLElement;
-                            el.style.background = "rgba(6,13,38,0.55)";
-                            el.style.boxShadow = "none";
-                          }}
-                        >
-                          {/* Main content */}
-                          <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-[#d8e8ff] text-[15px] truncate leading-snug">
-                              {role}
-                            </p>
-                            <div className="flex items-center gap-3 mt-1.5">
-                              <span className="flex items-center gap-1.5 text-[11px] text-[#3a5080]">
-                                <Clock size={9} /> {dateStr}
-                              </span>
-                              {iters > 0 && (
-                                <span className="flex items-center gap-1.5 text-[11px] text-[#3a5080]">
-                                  <TrendingUp size={9} /> {iters} iteration{iters !== 1 ? "s" : ""}
+                        <article key={session.id} className="group rounded-xl border border-[#e4ded2] bg-[#fffdf8] p-4 transition hover:border-[#c9bda9] hover:shadow-sm">
+                          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                            <button onClick={() => router.push(`/sessions/${session.id}`)} className="min-w-0 flex-1 text-left">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ color: status.tone, background: status.bg, border: `1px solid ${status.border}` }}>
+                                  {status.label}
                                 </span>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Status + actions */}
-                          <div className="flex items-center gap-3 shrink-0">
-                            {cfg.pulse && (
-                              <span
-                                className="w-1.5 h-1.5 rounded-full animate-pulse shrink-0"
-                                style={{ background: cfg.color }}
-                              />
-                            )}
-                            <span
-                              className="text-[11px] font-semibold px-2.5 py-1 rounded-full hidden sm:block"
-                              style={{
-                                color: cfg.color,
-                                background: `${cfg.color}18`,
-                                border: `1px solid ${cfg.color}30`,
-                              }}
-                            >
-                              {cfg.label}
-                            </span>
-
-                            <button
-                              onClick={e => { e.stopPropagation(); setPendingDelete(session); }}
-                              className="w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shrink-0"
-                              style={{ background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.15)" }}
-                            >
-                              <Trash2 size={11} className="text-red-400" />
+                                <span className="text-xs text-[#8b8376]">Created {date}</span>
+                                {session.preview_iteration_count > 0 && <span className="text-xs text-[#8b8376]">{session.preview_iteration_count} calibration pass{session.preview_iteration_count > 1 ? "es" : ""}</span>}
+                              </div>
+                              <h3 className="mt-3 truncate text-lg font-black tracking-tight">{roleName(session)}</h3>
+                              <p className="mt-1 line-clamp-2 max-w-3xl text-sm leading-6 text-[#645d52]">{roleBrief(session)}</p>
                             </button>
 
-                            <ChevronRight
-                              size={14}
-                              className="text-[#2a3a5a] group-hover:text-[#6c80a8] transition-all group-hover:translate-x-0.5"
-                            />
+                            <div className="grid min-w-[260px] gap-2 sm:grid-cols-2 md:max-w-[360px]">
+                              <div className="rounded-lg border border-[#ebe5d9] bg-white px-3 py-2">
+                                <p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#9b6a2f]">Attention</p>
+                                <p className="mt-1 text-xs font-semibold text-[#2c2924]">{candidatesNeedingWork(session)}</p>
+                              </div>
+                              <div className="rounded-lg border border-[#ebe5d9] bg-white px-3 py-2">
+                                <p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#9b6a2f]">Evidence</p>
+                                <p className="mt-1 text-xs font-semibold text-[#2c2924]">
+                                  {summary ? `${summary.p0_count} P0 / ${summary.reject_count} blocked` : "Waiting for resumes"}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 md:justify-end">
+                              <button
+                                onClick={() => router.push(`/sessions/${session.id}`)}
+                                className="inline-flex items-center gap-2 rounded-lg bg-[#151411] px-3 py-2 text-xs font-bold text-white transition hover:bg-[#2a2823]"
+                              >
+                                {status.action} <ArrowRight size={13} />
+                              </button>
+                              <button
+                                onClick={() => deleteRole(session)}
+                                disabled={deletingId === session.id}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[#ead7d2] text-red-500 transition hover:bg-red-50 disabled:opacity-50"
+                                title="Delete role"
+                              >
+                                {deletingId === session.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                              </button>
+                            </div>
                           </div>
-                        </div>
+                        </article>
                       );
                     })}
                   </div>
-                </div>
-              );
-            })}
+                )}
+              </section>
 
-            {/* New session row */}
-            <div>
-              <button
-                onClick={createNew}
-                disabled={creating}
-                className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl text-xs text-[#3a5080] hover:text-[#566b99] transition-all"
-                style={{ border: "1px dashed rgba(79,110,247,0.12)" }}
-              >
-                <Plus size={12} /> New Session
-              </button>
+              <aside className="grid gap-5 content-start">
+                <section className="rounded-2xl border border-[#ded8cc] bg-white p-5 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#ede7da] text-[#151411]"><Layers3 size={18} /></span>
+                    <div>
+                      <h2 className="text-sm font-black">Recruiter copilot loop</h2>
+                      <p className="text-xs text-[#777064]">The system improves after recruiter judgment.</p>
+                    </div>
+                  </div>
+                  <div className="mt-5 space-y-3">
+                    {[
+                      "Turn the JD into evidence-based criteria.",
+                      "Review a small calibration batch before trusting the model.",
+                      "Mark ideal resumes and explain disagreements.",
+                      "Run the final shortlist only after the rubric feels right.",
+                    ].map((item, index) => (
+                      <div key={item} className="flex gap-3 rounded-xl border border-[#ebe5d9] bg-[#fffdf8] p-3">
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#151411] text-[11px] font-bold text-white">{index + 1}</span>
+                        <p className="text-sm leading-5 text-[#4d473d]">{item}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="rounded-2xl border border-[#ded8cc] bg-[#2b261f] p-5 text-white shadow-sm">
+                  <div className="flex items-center gap-2 text-[#e6c78e]"><TriangleAlert size={15} /><p className="text-xs font-bold uppercase tracking-[.16em]">Design rule</p></div>
+                  <p className="mt-3 text-sm leading-6 text-[#f1eadf]">Nothing on this screen is decorative filler. If a card does not help a recruiter decide, calibrate, or unblock work, it does not belong here.</p>
+                </section>
+              </aside>
             </div>
           </div>
-        )}
-      </main>
-
-      {/* ── Footer ──────────────────────────────────────────────────── */}
-      <footer
-        className="max-w-4xl mx-auto w-full px-6 py-8 flex items-center justify-between border-t"
-        style={{ borderColor: "rgba(79,110,247,0.06)" }}
-      >
-        <span className="text-[#3a5080] text-xs font-semibold">NextHire</span>
-        <span className="text-[#2a3a5a] text-xs">Structured · Objective · Scalable</span>
-      </footer>
-
-      {/* ── Delete confirm ───────────────────────────────────────────── */}
-      {pendingDelete && (
-        <ConfirmDelete
-          name={(() => {
-            const jd = pendingDelete.jd_analysis as Record<string, unknown> | null;
-            return jd ? String(jd.role ?? "Unnamed Role") : "New Session";
-          })()}
-          onConfirm={confirmDelete}
-          onCancel={() => setPendingDelete(null)}
-          deleting={deleting}
-        />
-      )}
-    </div>
+        </section>
+      </div>
+    </main>
   );
 }
