@@ -8,6 +8,7 @@ import {
   BASE,
   type CandidateFeedback,
   type CandidateResult,
+  type InterpretResponse,
   type JdAnalysis,
   type ResumeListItem,
   type Session,
@@ -167,6 +168,9 @@ export default function RoleWorkspace({ params }: { params: Promise<{ id: string
   const [jdText, setJdText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [instruction, setInstruction] = useState("");
+  const [teachingIntent, setTeachingIntent] = useState<"auto" | "hard_filter" | "p0_signal" | "relax_filter" | "red_flag">("auto");
+  const [teachingReview, setTeachingReview] = useState<InterpretResponse | null>(null);
+  const [promptOpen, setPromptOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
 
@@ -207,6 +211,12 @@ export default function RoleWorkspace({ params }: { params: Promise<{ id: string
   const jd = session?.jd_analysis as JdAnalysis | null | undefined;
   const rubric = (session?.final_config || session?.synthesized_config) as any;
   const summary = session?.full_results?.summary || session?.preview_field_results?.summary;
+  const scoringPrompt = String((rubric as any)?.final_evaluation_prompt || "");
+  const hasTeachingContext = Boolean(
+    session?.preview_field_results ||
+    session?.full_results ||
+    (session?.jd_analysis && resumes.length > 0)
+  );
   const selectedResume = resumes.find((resume) => {
     const resultFile = selected?.file_name || (selected as any)?.file_name;
     if (resultFile && resume.file_name === resultFile) return true;
@@ -249,8 +259,57 @@ export default function RoleWorkspace({ params }: { params: Promise<{ id: string
     run(() => api.accept(id), { resumes: true });
   }
 
+  function teachingPayload() {
+    const text = instruction.trim();
+    if (!text || teachingIntent === "auto") return text;
+    const prefix: Record<Exclude<typeof teachingIntent, "auto">, string> = {
+      hard_filter: "Treat this as a hard baseline filter:",
+      p0_signal: "Treat this as a P0 reward signal:",
+      relax_filter: "Relax this hard filter:",
+      red_flag: "Treat this as a red flag, not an automatic reject:",
+    };
+    return `${prefix[teachingIntent]} ${text}`;
+  }
+
+  function reviewTeaching() {
+    const payload = teachingPayload();
+    if (!payload) return setError("Write the teaching instruction first.");
+    const lower = payload.toLowerCase();
+    const obviousTier1 = /tier\s*1|tier[- ]?one|top[- ]tier/.test(lower) && /india|indian/.test(lower) && /universit|college|institution|school/.test(lower);
+    if (teachingIntent !== "auto" || obviousTier1) {
+      const intentType = teachingIntent === "auto" && obviousTier1 ? "hard_filter" : teachingIntent;
+      setTeachingReview({
+        intent_type: intentType === "auto" ? "ambiguous" : intentType,
+        interpretation:
+          intentType === "hard_filter"
+            ? "I will treat this as a hard baseline gate. Candidates who do not satisfy it should be rejected or marked needs_review when evidence is unclear."
+            : intentType === "p0_signal"
+              ? "I will treat this as a reward signal. It should lift strong candidates after hard filters pass, but should not reject candidates by itself."
+              : intentType === "relax_filter"
+                ? "I will relax this requirement so candidates are not rejected only because they miss it."
+                : "I will treat this as a red flag for recruiter review, not an automatic rejection.",
+        will_do: [
+          intentType === "hard_filter"
+            ? `Add hard filter — ${instruction.trim()}`
+            : intentType === "p0_signal"
+              ? `Add P0 reward — ${instruction.trim()}`
+              : intentType === "relax_filter"
+                ? `Relax filter — ${instruction.trim()}`
+                : `Add red flag — ${instruction.trim()}`,
+        ],
+        confirmation_prompt: "I'll apply this teaching to the scoring rubric and prompt. Does that look right?",
+      });
+      return;
+    }
+    run(() => api.interpretInstructions(id, payload).then((review) => setTeachingReview(review)));
+  }
+
   function refine() {
-    run(() => api.refinePreview(id, instruction, []), { resumes: true }).then(() => setInstruction(""));
+    const payload = teachingPayload();
+    run(() => api.refinePreview(id, payload, [], undefined, false), { resumes: true }).then(() => {
+      setInstruction("");
+      setTeachingReview(null);
+    });
   }
 
   function sendCandidateFeedback(action: ActionTone) {
@@ -460,26 +519,93 @@ export default function RoleWorkspace({ params }: { params: Promise<{ id: string
           </DeskCard>
 
           <DeskCard title="Rubric cockpit" icon={Layers3}>
-            {jd ? <RubricPanel jd={jd} rubric={rubric} /> : <p className="text-sm leading-6 text-[#777064]">Analyze the JD to see hard filters, P0 signals, red flags, and calibration questions.</p>}
+            {jd ? (
+              <>
+                <RubricPanel jd={jd} rubric={rubric} />
+                <button
+                  onClick={() => setPromptOpen((value) => !value)}
+                  disabled={!scoringPrompt}
+                  className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[#ded8cc] bg-[#fffdf8] px-3 py-2 text-xs font-black text-[#151411] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Eye size={14} />
+                  {promptOpen ? "Hide scoring prompt" : "Show scoring prompt"}
+                </button>
+                {promptOpen && (
+                  <pre className="mt-3 max-h-[320px] overflow-auto whitespace-pre-wrap rounded-xl border border-[#ded8cc] bg-[#151411] p-3 text-xs leading-5 text-[#f8f5ee]">
+                    {scoringPrompt || "No scoring prompt generated yet."}
+                  </pre>
+                )}
+              </>
+            ) : <p className="text-sm leading-6 text-[#777064]">Analyze the JD to see hard filters, P0 signals, red flags, and calibration questions.</p>}
           </DeskCard>
 
           <DeskCard title="Teach the model" icon={MessageSquareText}>
             <p className="text-sm leading-6 text-[#645d52]">Use plain language to adjust what the model should reward, relax, or reject.</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {[
+                ["auto", "Auto"],
+                ["hard_filter", "Hard filter"],
+                ["p0_signal", "P0 reward"],
+                ["relax_filter", "Relax"],
+                ["red_flag", "Red flag"],
+              ].map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => {
+                    setTeachingIntent(key as typeof teachingIntent);
+                    setTeachingReview(null);
+                  }}
+                  className={`rounded-lg border px-3 py-2 text-xs font-black ${teachingIntent === key ? "border-[#151411] bg-[#151411] text-white" : "border-[#ded8cc] bg-[#fffdf8] text-[#4d473d]"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <Textarea
               value={instruction}
-              onChange={(e) => setInstruction(e.target.value)}
+              onChange={(e) => {
+                setInstruction(e.target.value);
+                setTeachingReview(null);
+              }}
               rows={4}
               placeholder="Example: Do not reject candidates without EdTech if they have strong consumer product launches."
               className="mt-3 resize-none border-[#ded8cc] bg-[#fffdf8] text-[#151411] placeholder:text-[#a49a8b]"
             />
-            <button
-              onClick={refine}
-              disabled={busy || !instruction.trim() || !session.preview_field_results}
-              className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[#151411] bg-[#151411] px-3 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {busy ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
-              Apply to calibration
-            </button>
+            {teachingReview && (
+              <div className="mt-3 rounded-xl border border-[#fedf89] bg-[#fffaeb] p-3 text-[#7a3b00]">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="rounded-full border border-[#fdb022] bg-white px-2 py-0.5 text-[10px] font-black uppercase tracking-[.12em]">{teachingReview.intent_type?.replaceAll("_", " ") || "review"}</span>
+                  <span className="text-[10px] font-black uppercase tracking-[.12em]">Confirm before applying</span>
+                </div>
+                <p className="mt-2 text-xs leading-5">{teachingReview.interpretation}</p>
+                <div className="mt-2 space-y-1">
+                  {teachingReview.will_do.map((item) => (
+                    <OneLine key={item} text={item} className="text-xs font-semibold" />
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                onClick={reviewTeaching}
+                disabled={busy || !instruction.trim() || !hasTeachingContext}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#ded8cc] bg-[#fffdf8] px-3 py-2 text-sm font-bold text-[#151411] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {busy ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
+                Review
+              </button>
+              <button
+                onClick={refine}
+                disabled={busy || !instruction.trim() || !hasTeachingContext}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#151411] bg-[#151411] px-3 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {busy ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+                {teachingReview ? "Confirm" : "Apply"}
+              </button>
+            </div>
+            {!hasTeachingContext && (
+              <p className="mt-2 text-xs text-[#777064]">Add the JD and resumes before teaching the model.</p>
+            )}
           </DeskCard>
 
           <DeskCard title="Run details" icon={Eye}>
@@ -852,6 +978,9 @@ function rubricRoleLens(value?: string) {
 
 function rubricHardLabel(value?: string) {
   const text = String(value || "");
+  const lower = text.toLowerCase();
+  if (lower.includes("tier") && (lower.includes("university") || lower.includes("institution") || lower.includes("college"))) return "Tier 1 university";
+  if (lower.includes("product management") || lower.includes("product ownership") || lower.includes("product role")) return "Product experience";
   const normalized = evidenceCriterion(text);
   if (normalized === "1-1.5 yrs PM") return "PM tenure";
   if (normalized === "Lifecycle") return "Lifecycle ownership";
@@ -881,9 +1010,15 @@ function RubricPanel({ jd, rubric }: { jd: JdAnalysis; rubric: any }) {
   const checks = rubric?.scoring_rubric?.baseline_checks || [];
   const weights = rubric?.scoring_rubric?.p0_weights || [];
   const red = rubric?.scoring_rubric?.red_flag_checks || jd.red_flags || [];
-  const hardChecks = (checks.length ? checks : jd.baseline_signals || []).slice(0, 5).map((item: any) => ({
+  const hardSource = checks.length ? checks.filter((item: any) => item?.reject_if_missing !== false && item?.status !== "disabled") : jd.baseline_signals || [];
+  const relaxedSource = checks.length ? checks.filter((item: any) => item?.reject_if_missing === false && item?.status !== "disabled") : [];
+  const hardChecks = hardSource.slice(0, 6).map((item: any) => ({
     text: rubricHardLabel(item.check || item),
-    meta: "must-have",
+    meta: item.source === "explicit" ? "explicit" : "hard",
+  }));
+  const relaxedChecks = relaxedSource.slice(0, 4).map((item: any) => ({
+    text: rubricHardLabel(item.check || item),
+    meta: "relaxed",
   }));
   const p0Signals = (weights.length ? weights : jd.p0_signals || []).slice(0, 5).map((item: any) => ({
     text: rubricP0Label(item.signal || item),
@@ -907,6 +1042,7 @@ function RubricPanel({ jd, rubric }: { jd: JdAnalysis; rubric: any }) {
         </div>
       )}
       <RubricList title="Hard filters" items={hardChecks} icon={CheckCircle2} tone={matchTone("fail")} />
+      {relaxedChecks.length > 0 && <RubricList title="Relaxed criteria" items={relaxedChecks} icon={CircleDashed} tone={matchTone("partial")} />}
       <RubricList title="P0 signals" items={p0Signals} icon={Star} tone={matchTone("pass")} />
       <RubricList title="Red flags" items={redFlags} icon={ShieldAlert} tone={matchTone("partial")} />
     </div>

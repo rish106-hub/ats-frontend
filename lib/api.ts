@@ -119,6 +119,7 @@ export interface ResumeLens {
 }
 
 export interface InterpretResponse {
+  intent_type?: "hard_filter" | "p0_signal" | "relax_filter" | "red_flag" | "ambiguous";
   interpretation: string;
   will_do: string[];
   confirmation_prompt: string;
@@ -173,7 +174,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    const err = await res.json().catch(async () => ({ detail: (await res.text().catch(() => "")) || res.statusText }));
     let msg = "Request failed";
     if (typeof err.detail === "string") {
       msg = err.detail;
@@ -232,10 +233,11 @@ export const api = {
     instructions: string,
     candidate_feedback: CandidateFeedback[] = [],
     apiKey?: string,
+    rescore = true,
   ) =>
     req<Session>(`/api/sessions/${id}/preview/refine`, {
       method: "POST",
-      body: JSON.stringify({ instructions, candidate_feedback, api_key: apiKey }),
+      body: JSON.stringify({ instructions, candidate_feedback, api_key: apiKey, rescore }),
     }),
 
   reloadPreview: (id: string, apiKey?: string) =>
