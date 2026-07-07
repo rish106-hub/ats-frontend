@@ -1,1338 +1,974 @@
 "use client";
 
-import { use, useCallback, useEffect, useRef, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  api, BASE,
-  type Session, type CandidateFeedback, type InterpretResponse,
-  type JdAnalysis, type ResumeListItem, type LessonLearned, type SkippedInfo,
-} from "@/lib/api";
 import { Textarea } from "@/components/ui/textarea";
-import { Separator } from "@/components/ui/separator";
-import { FieldMatchTable } from "@/components/field-match-table";
 import {
-  FileText, Upload, RefreshCw, Trophy, AlertTriangle, Info,
-  Zap, Play, XCircle, CheckCircle2, Search, Scale, Brain,
-  Star, Flag, Target, MessageSquare, Layers, Clock,
-  ArrowLeft, ExternalLink, ChevronUp, ChevronDown, X, Check,
+  api,
+  BASE,
+  type CandidateFeedback,
+  type CandidateResult,
+  type JdAnalysis,
+  type ResumeListItem,
+  type Session,
+} from "@/lib/api";
+import {
+  AlertCircle,
+  ArrowLeft,
+  ArrowRight,
+  BadgeCheck,
+  Brain,
+  Check,
+  CheckCircle2,
+  ChevronRight,
+  CircleDashed,
+  ClipboardCheck,
+  Eye,
+  FileText,
+  Flag,
+  Gauge,
+  Layers3,
+  Loader2,
+  MessageSquareText,
+  PanelRightOpen,
+  Play,
+  RefreshCcw,
+  Search,
+  ShieldAlert,
+  Sparkles,
+  Star,
+  Upload,
+  X,
+  XCircle,
 } from "lucide-react";
-import { AiThinking } from "@/components/ai-thinking";
 
-/* ── types ─────────────────────────────────────────────────────────── */
-type Step = "jd" | "resumes" | "preview" | "running" | "results";
-type BaselineCheck = { check: string; resume_field: string; reject_if_missing: boolean };
-type P0Weight      = { signal: string; weight: number; resume_field: string };
+type Step = "jd" | "resumes" | "calibration" | "running" | "results";
 
-const STEP_ORDER: Step[] = ["jd", "resumes", "preview", "results"];
+type ActionTone = "shortlist" | "reject" | "flag";
 
-function stepFromStatus(s: Session): Step {
-  if (s.status === "completed")       return "results";
-  if (s.status === "running_full_eval") return "running";
-  if (s.status === "preview_active")  return "preview";
-  if (["resumes_uploaded", "jd_analyzed", "rubric_ready"].includes(s.status)) return "resumes";
+const REVIEW_ACTIONS: Array<{ key: ActionTone; label: string; icon: any; className: string }> = [
+  { key: "shortlist", label: "Shortlist", icon: CheckCircle2, className: "bg-[#0f5132] text-white border-[#0f5132] hover:bg-[#0b3f27]" },
+  { key: "reject", label: "Reject", icon: XCircle, className: "bg-[#b42318] text-white border-[#b42318] hover:bg-[#8f1c14]" },
+  { key: "flag", label: "Needs review", icon: Flag, className: "bg-[#b54708] text-white border-[#b54708] hover:bg-[#93370d]" },
+];
+
+function stepFromStatus(session: Session): Step {
+  if (session.status === "completed") return "results";
+  if (session.status === "running_full_eval") return "running";
+  if (session.status === "preview_active") return "calibration";
+  if (["resumes_uploaded", "rubric_ready"].includes(session.status)) return "resumes";
+  if (session.status === "jd_analyzed") return "resumes";
   return "jd";
 }
 
-/* ── small primitives ──────────────────────────────────────────────── */
-function Spinner({ sm }: { sm?: boolean }) {
-  const sz = sm ? "w-3 h-3 border-[1.5px]" : "w-4 h-4 border-2";
-  return <span className={`inline-block ${sz} border-white/20 border-t-white rounded-full animate-spin`} />;
+function roleName(session: Session | null) {
+  return String((session?.jd_analysis as any)?.role || "Untitled hiring role");
 }
 
-const PROC_MSGS = [
-  "Parsing job description details…",
-  "Extracting signals & requirements…",
-  "Building your evaluation rubric…",
-  "Cross-referencing hiring patterns…",
-  "Finalising criteria…",
-];
-const RESUME_MSGS = ["Parsing resume structure…", "Extracting timelines…", "Identifying skills…", "Mapping to requirements…"];
-const EVAL_TIPS   = [
-  "You can leave this page — evaluation runs in the background.",
-  "Each resume is scored against your final rubric.",
-  "Partial results are saved after every resume.",
-  "P0 candidates will top your results.",
-  "Red flags and baseline failures are checked for every candidate.",
-];
-
-function BounceMsg({ msgs }: { msgs: string[] }) {
-  const [i, setI] = useState(0);
-  useEffect(() => { const t = setInterval(() => setI(n => (n + 1) % msgs.length), 2600); return () => clearInterval(t); }, [msgs]);
-  return (
-    <div className="flex items-center gap-3">
-      <div className="flex gap-1">
-        {[0, 1, 2].map(d => (
-          <span key={d} className="w-1.5 h-1.5 rounded-full bg-blue-500"
-            style={{ animationDelay: `${d * 0.18}s`, animation: `nh-bounce-dot 1.3s ease-in-out ${d * 0.18}s infinite` }} />
-        ))}
-      </div>
-      <span className="text-blue-300/80 text-sm">{msgs[i]}</span>
-    </div>
-  );
+function candidateTone(result?: CandidateResult) {
+  if (!result) return { label: "No candidate", color: "#475467", bg: "#f2f4f7", border: "#d0d5dd" };
+  if (result.classification === "P0") return { label: "Priority", color: "#027a48", bg: "#ecfdf3", border: "#abefc6" };
+  if (result.classification === "Baseline") return { label: "Review", color: "#b54708", bg: "#fffaeb", border: "#fedf89" };
+  return { label: "Reject", color: "#b42318", bg: "#fef3f2", border: "#fecdca" };
 }
 
-/* ══════════════════════════════════════════════════════════════════
-   SESSION PAGE
-═══════════════════════════════════════════════════════════════════ */
-export default function SessionPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id }   = use(params);
-  const router   = useRouter();
+function matchTone(match?: string) {
+  if (match === "pass") return { label: "Pass", color: "#027a48", bg: "#ecfdf3", border: "#abefc6" };
+  if (match === "fail") return { label: "Fail", color: "#b42318", bg: "#fef3f2", border: "#fecdca" };
+  return { label: "Review", color: "#b54708", bg: "#fffaeb", border: "#fedf89" };
+}
 
-  const [session,   setSession]   = useState<Session | null>(null);
-  const [resumes,   setResumes]   = useState<ResumeListItem[]>([]);
-  const [loading,   setLoading]   = useState(true);
-  const [busy,      setBusy]      = useState(false);
-  const [error,     setError]     = useState("");
-  const [step,      setStep]      = useState<Step>("jd");
-  const [viewStep,  setViewStep]  = useState<Step | null>(null);   // back-nav override
+function baselineTone(pass?: boolean) {
+  return pass
+    ? { label: "Pass", color: "#027a48", bg: "#ecfdf3", border: "#abefc6" }
+    : { label: "Fail", color: "#b42318", bg: "#fef3f2", border: "#fecdca" };
+}
 
-  const [jdText,         setJdText]         = useState("");
-  const [files,          setFiles]          = useState<File[]>([]);
-  const [instrText,      setInstrText]      = useState("");
-  const [exemplarOpen,   setExemplarOpen]   = useState(false);
-  const [candFeedback,   setCandFeedback]   = useState<CandidateFeedback[]>([]);
-  const [interpretPend,  setInterpretPend]  = useState(false);
-  const [interpretRes,   setInterpretRes]   = useState<InterpretResponse | null>(null);
+function compactText(value?: string, max = 150) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (!text) return "No evidence found.";
+  return text.length > max ? `${text.slice(0, max).trim()}...` : text;
+}
+
+function OneLine({ text, className = "" }: { text: string; className?: string }) {
+  return <span title={text} className={`block min-w-0 truncate ${className}`}>{text}</span>;
+}
+
+function criterionLabel(value?: string) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  const failSplit = text.split(" FAILS if:");
+  const firstSentence = failSplit[0].split(". ")[0];
+  return compactText(firstSentence, 110);
+}
+
+function evidenceCriterion(value?: string) {
+  const text = String(value || "").toLowerCase();
+  if (/1-1\.5 years|combined relevant experience|less than 1 year/.test(text)) return "1-1.5 yrs PM";
+  if (/ideation through to customer launch|full lifecycle|product-level ownership/.test(text)) return "Lifecycle";
+  if (/customer needs|business drivers|metrics analysis|market trends/.test(text)) return "Customer/metrics";
+  if (/stakeholder management|cross-functional|fast-paced startup/.test(text)) return "Stakeholders";
+  return criterionLabel(value).replaceAll("_", " ");
+}
+
+function evidenceResumeSignal(value?: string) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  const lower = text.toLowerCase();
+  if (!text) return "No resume proof";
+  if (lower.includes("qa analyst")) return "QA analyst evidence";
+  if (lower.includes("business analyst")) return "BA internship";
+  if (lower.includes("product analyst intern")) return "Product analyst internship";
+  if (lower.includes("project manager") || lower.includes("scrum master")) return "Project delivery evidence";
+  return compactText(text.split(/[.;]/)[0], 44);
+}
+
+function evidenceDecisionNote(note?: string, match?: string) {
+  const text = String(note || "").replace(/\s+/g, " ").trim();
+  const lower = text.toLowerCase();
+  if (!text) return match === "pass" ? "Evidence supports the bar" : "Evidence is not clear enough";
+  if (/less than|required|short of|required 1-1\.5/.test(lower)) return "Below experience bar";
+  if (/not a product manager|not direct product management|not product manager|qa analyst/.test(lower)) return "No PM ownership";
+  if (/no clear evidence|no evidence|lacks detail|too brief/.test(lower) && /lifecycle|ideation|launch|ownership/.test(lower)) return "No lifecycle proof";
+  if (/business drivers|market trends|customer needs|metrics/.test(lower) && /lacks|lack|without|but/.test(lower)) return "Thin business signal";
+  if (/stakeholder|cross-functional|fast-paced/.test(lower) && /lacks|lack|passive|but/.test(lower)) return "Thin stakeholder proof";
+  if (/strong stakeholder|extensive experience|demonstrates strong/.test(lower)) return "Strong stakeholder proof";
+  return compactText(text, 48);
+}
+
+function evidenceFieldLabel(value?: string) {
+  const text = String(value || "Evidence").replaceAll("_", " ");
+  if (text.toLowerCase() === "work experience") return "Work exp";
+  return compactText(text, 16);
+}
+
+function pct(score?: number) {
+  if (score === undefined || score === null || Number.isNaN(score)) return "--";
+  return `${Math.round(score)}`;
+}
+
+function referralInsight(resume?: ResumeListItem) {
+  if (!resume) return { found: false, label: "No resume loaded", detail: "Open a mapped resume first." };
+  const raw = JSON.stringify(resume.resume_json || {}).toLowerCase();
+  const found = raw.includes("referr") || raw.includes("referred by") || raw.includes("employee referral");
+  return found
+    ? { found: true, label: "Referral signal found", detail: "Resume data contains referral-related text. Verify source before treating it as confirmed." }
+    : { found: false, label: "No referral signal", detail: "No referral marker was found in parsed resume data." };
+}
+
+export default function RoleWorkspace({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
+  const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Clear viewStep whenever session naturally advances
-  useEffect(() => { setViewStep(null); }, [step]);
-
-  const view = viewStep ?? step;
+  const [session, setSession] = useState<Session | null>(null);
+  const [resumes, setResumes] = useState<ResumeListItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [jdText, setJdText] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
+  const [instruction, setInstruction] = useState("");
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
 
   const refresh = useCallback(async () => {
-    const s = await api.getSession(id);
-    setSession(s);
-    setStep(stepFromStatus(s));
-    if (s.jd_text) setJdText(s.jd_text);
-    return s;
+    const next = await api.getSession(id);
+    setSession(next);
+    if (next.jd_text) setJdText(next.jd_text);
+    return next;
   }, [id]);
 
-  const refreshResumes = useCallback(() => {
-    api.listResumes(id).then(setResumes).catch(console.warn);
+  const refreshResumes = useCallback(async () => {
+    const list = await api.listResumes(id);
+    setResumes(list);
+    return list;
   }, [id]);
 
-  useEffect(() => { refresh().catch(() => setError("Session not found.")).finally(() => setLoading(false)); }, [refresh]);
-  useEffect(() => { refreshResumes(); }, [refreshResumes]);
+  useEffect(() => {
+    Promise.all([refresh(), refreshResumes()])
+      .catch(() => setError("Could not load this hiring role."))
+      .finally(() => setLoading(false));
+  }, [refresh, refreshResumes]);
 
-  // Poll during background eval
   useEffect(() => {
     if (!session) return;
-    const active = session.status === "running_full_eval"
-      || session.full_eval_progress?.status === "running"
-      || session.full_eval_progress?.status === "queued";
-    if (!active) return;
-    const iv = setInterval(() => {
-      api.getSession(id).then(s => {
-        setSession(s); setStep(stepFromStatus(s));
-        if (s.status === "completed" || s.full_eval_progress?.status === "error") clearInterval(iv);
-      }).catch(() => {});
-    }, 3000);
-    return () => clearInterval(iv);
-  }, [id, session?.status, session?.full_eval_progress?.status]);
+    const running = session.status === "running_full_eval" || session.full_eval_progress?.status === "running" || session.full_eval_progress?.status === "queued";
+    if (!running) return;
+    const interval = setInterval(() => refresh().catch(() => undefined), 3000);
+    return () => clearInterval(interval);
+  }, [refresh, session?.status, session?.full_eval_progress?.status]);
 
-  async function run<T>(fn: () => Promise<T>, opts?: { refreshResumes?: boolean }) {
-    setBusy(true); setError("");
+  const step = session ? stepFromStatus(session) : "jd";
+  const results = useMemo(() => {
+    return session?.full_results?.results || session?.preview_field_results?.results || [];
+  }, [session?.full_results, session?.preview_field_results]);
+
+  const selected = results[selectedIndex] || results[0];
+  const selectedTone = candidateTone(selected);
+  const jd = session?.jd_analysis as JdAnalysis | null | undefined;
+  const rubric = (session?.final_config || session?.synthesized_config) as any;
+  const summary = session?.full_results?.summary || session?.preview_field_results?.summary;
+  const selectedResume = resumes.find((resume) => {
+    const resultFile = selected?.file_name || (selected as any)?.file_name;
+    if (resultFile && resume.file_name === resultFile) return true;
+    return !!selected?.candidate_name && resume.file_name.toLowerCase().includes(selected.candidate_name.toLowerCase().split(" ")[0] || "");
+  });
+
+  async function run<T>(fn: () => Promise<T>, opts?: { resumes?: boolean }) {
+    setBusy(true);
+    setError("");
     try {
-      const r = await fn();
+      await fn();
       await refresh();
-      if (opts?.refreshResumes) refreshResumes();
-      return r;
-    } catch (e) { setError((e as Error).message); }
-    finally      { setBusy(false); }
+      if (opts?.resumes) await refreshResumes();
+    } catch (e) {
+      setError((e as Error).message || "Something failed.");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function analyzeJD()      { run(() => api.analyzeJD(id, jdText)); }
-  function uploadResumes()  {
-    if (!files.length) { setError("Select at least one PDF."); return; }
-    run(() => api.uploadResumes(id, files), { refreshResumes: true });
-  }
-  function startPreview()   { run(() => api.startPreview(id), { refreshResumes: true }); }
-  function reloadPreview()  { run(() => api.reloadPreview(id), { refreshResumes: true }); }
-  function acceptAll()      { run(() => api.accept(id), { refreshResumes: true }); }
-
-  async function requestRefine() {
-    if (!instrText.trim()) { doRefine(); return; }
-    setInterpretPend(true); setInterpretRes(null); setError("");
-    try { setInterpretRes(await api.interpretInstructions(id, instrText)); }
-    catch (e) { setError((e as Error).message); }
-    finally   { setInterpretPend(false); }
+  function analyzeJD() {
+    if (!jdText.trim()) return setError("Paste the job description first.");
+    run(() => api.analyzeJD(id, jdText));
   }
 
-  function doRefine() {
-    setInterpretRes(null);
-    run(() => api.refinePreview(id, instrText, candFeedback), { refreshResumes: true })
-      .then(() => { setInstrText(""); setCandFeedback([]); });
+  function uploadResumes() {
+    if (!files.length) return setError("Select at least one PDF resume.");
+    run(() => api.uploadResumes(id, files), { resumes: true });
   }
 
-  function immediateFeedback(fb: CandidateFeedback) {
-    run(() => api.refinePreview(id, "", [fb]), { refreshResumes: true });
+  function startCalibration() {
+    run(() => api.startPreview(id), { resumes: true });
   }
 
-  async function patchReclassify(patch: { baseline_checks?: BaselineCheck[]; p0_weights?: P0Weight[] }) {
-    setBusy(true); setError("");
-    try {
-      await api.patchRubric(id, patch);
-      if ((session as Session).preview_field_results?.results?.length) await api.reclassifyPreview(id);
-      await refresh();
-    } catch (e) { setError((e as Error).message); }
-    finally     { setBusy(false); }
+  function loadMoreCalibration() {
+    run(() => api.reloadPreview(id), { resumes: true });
   }
 
-  async function toggleExemplar(name: string, cur: boolean) {
-    try {
-      const u = await api.markExemplar(id, name, !cur);
-      setResumes(prev => prev.map(r => r.file_name === name ? { ...r, is_exemplar: u.is_exemplar } : r));
-    } catch (e) { setError((e as Error).message); }
+  function finalRun() {
+    run(() => api.accept(id), { resumes: true });
   }
 
-  /* ── loading / error ── */
-  if (loading) return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="nh-card p-12 flex flex-col items-center gap-6">
-        <div className="w-12 h-12 border-2 border-blue-500/20 border-t-blue-500 rounded-full animate-spin" />
-        <p className="text-[#6c80a8] text-sm">Loading session…</p>
-      </div>
-    </div>
-  );
+  function refine() {
+    run(() => api.refinePreview(id, instruction, []), { resumes: true }).then(() => setInstruction(""));
+  }
 
-  if (!session) return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="nh-card p-12 flex flex-col items-center gap-4 text-center">
-        <p className="text-red-400 text-sm">{error || "Session not found."}</p>
-        <button onClick={() => router.push("/")} className="nh-btn-ghost flex items-center gap-2 px-6 py-2 text-sm">
-          <ArrowLeft size={14} /> All Sessions
-        </button>
-      </div>
-    </div>
-  );
+  function sendCandidateFeedback(action: ActionTone) {
+    if (!selected) return;
+    const note = reviewNotes[selected.candidate_name] || "Recruiter quick action from review cockpit.";
+    const feedback: CandidateFeedback = {
+      file_name: selected.file_name || (selected as any).file_name || selected.candidate_name,
+      action: action === "shortlist" ? "should_pass" : action === "reject" ? "should_fail" : "flag_for_review",
+      reason: note,
+    };
+    run(() => api.refinePreview(id, "", [feedback]), { resumes: true });
+  }
 
-  const jd     = session.jd_analysis;
-  const config = session.synthesized_config as Record<string, unknown> | null;
-  const tokens = (session.token_totals as Record<string, unknown>)?._total_tokens as number | undefined;
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) return;
+      if (e.key.toLowerCase() === "j") setSelectedIndex((i) => Math.min(results.length - 1, i + 1));
+      if (e.key.toLowerCase() === "k") setSelectedIndex((i) => Math.max(0, i - 1));
+      if (e.key.toLowerCase() === "s") sendCandidateFeedback("shortlist");
+      if (e.key.toLowerCase() === "r") sendCandidateFeedback("reject");
+      if (e.key.toLowerCase() === "f") sendCandidateFeedback("flag");
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [results.length, selected?.candidate_name, reviewNotes]);
+
+  if (loading) {
+    return <main className="grid min-h-screen place-items-center bg-[#f5f2ea] text-[#151411]"><Loader2 className="animate-spin" /></main>;
+  }
+
+  if (!session) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-[#f5f2ea] text-[#151411]">
+        <div className="rounded-2xl border border-[#ded8cc] bg-white p-6 text-center shadow-sm">
+          <p className="font-bold">Role not found.</p>
+          <button onClick={() => router.push("/")} className="mt-4 rounded-lg bg-[#151411] px-4 py-2 text-sm font-semibold text-white">Back to desk</button>
+        </div>
+      </main>
+    );
+  }
 
   return (
-    <div className="min-h-screen flex flex-col">
-
-      {/* ── Top bar ───────────────────────────────────────────────── */}
-      <header className="nh-nav sticky top-0 z-50">
-        <div className="px-8 h-14 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <button onClick={() => router.push("/")} className="flex items-center gap-2 hover:opacity-75 transition-opacity shrink-0">
-              <div
-                className="w-6 h-6 rounded-lg flex items-center justify-center font-black text-white text-xs"
-                style={{ background: "linear-gradient(135deg,#4f6ef7,#06b6d4)" }}
-              >
-                N
-              </div>
-              <span className="font-bold text-white text-sm hidden sm:block">NextHire</span>
+    <main className="min-h-screen bg-[#f5f2ea] text-[#151411]">
+      <header className="sticky top-0 z-40 border-b border-[#ded8cc] bg-[#f9f7f1]/95 backdrop-blur">
+        <div className="flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between lg:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <button onClick={() => router.push("/")} className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#ded8cc] bg-white text-[#151411]">
+              <ArrowLeft size={16} />
             </button>
-            <span className="text-[#2a3a5a] hidden sm:block text-sm">/</span>
-            <span className="text-[#8899b8] text-sm font-medium truncate">
-              {jd ? String((jd as any).role ?? "Session") : "New Session"}
-            </span>
-            {jd && (jd as any).role_context?.seniority_level && (
-              <span
-                className="text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide shrink-0 hidden md:block"
-                style={{ background: "rgba(37,99,235,0.12)", border: "1px solid rgba(96,165,250,0.2)", color: "#93c5fd" }}
-              >
-                {(jd as any).role_context.seniority_level}
-              </span>
-            )}
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold uppercase tracking-[.18em] text-[#9b6a2f]">Hiring role cockpit</p>
+              <h1 className="truncate text-lg font-black tracking-tight">{roleName(session)}</h1>
+            </div>
           </div>
-
-          <div className="flex items-center gap-4 shrink-0">
-            {session.preview_iteration_count > 0 && (
-              <span className="text-[#3a5080] text-xs hidden sm:block">
-                iter <span className="text-blue-400 font-mono font-bold">{session.preview_iteration_count}</span>
-              </span>
-            )}
-            {tokens && (
-              <span className="text-[#3a5080] text-[11px] font-mono hidden sm:block">{tokens.toLocaleString()} tok</span>
-            )}
+          <div className="flex flex-wrap items-center gap-2">
+            <StepPill active={step === "jd"} done={!!session.jd_analysis} label="JD" />
+            <ChevronRight size={14} className="text-[#b7ad9d]" />
+            <StepPill active={step === "resumes"} done={resumes.length > 0} label="Resumes" />
+            <ChevronRight size={14} className="text-[#b7ad9d]" />
+            <StepPill active={step === "calibration"} done={!!session.preview_field_results} label="Calibration" />
+            <ChevronRight size={14} className="text-[#b7ad9d]" />
+            <StepPill active={step === "results" || step === "running"} done={!!session.full_results} label="Shortlist" />
           </div>
         </div>
-
-        {/* Step nav strip */}
-        <StepNav current={step} view={view} onNavigate={setViewStep} />
       </header>
 
-      {/* ── Error banner ──────────────────────────────────────────── */}
       {error && (
-        <div className="sticky top-[calc(4rem+3.5rem)] z-40 px-8 py-2">
-          <div className="nh-card p-4 flex items-center justify-between gap-3" style={{ background: "rgba(239,68,68,0.08)", borderColor: "rgba(239,68,68,0.25)" }}>
-            <p className="text-red-400 text-sm">{error}</p>
-            <button onClick={() => setError("")} className="text-red-600 hover:text-red-400 shrink-0"><X size={13} /></button>
+        <div className="px-4 pt-4 lg:px-6">
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <span className="flex items-center gap-2"><AlertCircle size={15} /> {error}</span>
+            <button onClick={() => setError("")}><X size={14} /></button>
           </div>
         </div>
       )}
 
-      {/* ── Content ───────────────────────────────────────────────── */}
-      <div className="flex-1 px-8 py-10 max-w-4xl mx-auto w-full space-y-10">
-
-        {/* ═══ STEP 1: JD ════════════════════════════════════════ */}
-        {view === "jd" && (
-          <>
-            <PageHeader icon={<FileText size={16} />} title="Job Description Analysis"
-              sub="Paste the full job description — AI extracts baseline signals, P0 requirements, and red flags automatically." />
-
-            <div className="nh-card p-8 space-y-6">
-              <Textarea
-                placeholder={`Paste the full job description here…\n\nTip: include requirements, preferred skills, and cultural fit notes — the more detail, the sharper the rubric.`}
-                value={jdText}
-                onChange={e => setJdText(e.target.value)}
-                rows={14}
-                className="w-full text-sm resize-none"
-              />
-
-              <div className="flex items-center gap-4 flex-wrap">
-                <button onClick={analyzeJD} disabled={busy || !jdText.trim()} className="nh-btn-primary flex items-center gap-2 px-6 py-3 text-sm">
-                  {busy ? <><Spinner sm /> Analyzing…</> : "Analyze JD"}
-                </button>
-                {busy && <BounceMsg msgs={PROC_MSGS} />}
-                {jdText.trim() && !busy && (
-                  <span className="text-[#3a5080] text-xs">~{Math.max(10, Math.round(jdText.length / 200))}s estimate</span>
-                )}
-              </div>
+      <div className="grid min-w-0 gap-4 p-4 lg:grid-cols-[300px_minmax(0,1fr)_340px] lg:p-6">
+        <aside className="min-w-0 space-y-4">
+          <DeskCard title="Role readiness" icon={Gauge}>
+            <div className="space-y-3">
+              <ReadinessRow label="JD analyzed" done={!!session.jd_analysis} />
+              <ReadinessRow label="Resumes parsed" done={resumes.length > 0} />
+              <ReadinessRow label="Calibration reviewed" done={!!session.preview_field_results} />
+              <ReadinessRow label="Final shortlist" done={!!session.full_results} />
             </div>
+          </DeskCard>
 
-            {/* JD tip cards */}
-            {!jdText.trim() && (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {[
-                  { t: "Baseline Signals", d: "Non-negotiable requirements every candidate must meet",    color: "#4f6ef7", icon: "●" },
-                  { t: "P0 Signals",       d: "High-priority differentiators that define the ideal hire", color: "#8b5cf6", icon: "★" },
-                  { t: "Red Flags",        d: "Patterns that indicate poor culture or role fit",           color: "#f59e0b", icon: "⚑" },
-                ].map(({ t, d, color, icon }) => (
-                  <div key={t} className="nh-card p-6 space-y-3">
-                    <div className="flex items-center gap-2.5">
-                      <span className="text-base leading-none" style={{ color }}>{icon}</span>
-                      <p className="text-sm font-semibold text-white">{t}</p>
-                    </div>
-                    <p className="text-[#566b99] text-xs leading-relaxed">{d}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Prior analysis result (shown when navigating back) */}
-            {jd && step !== "jd" && (
-              <div className="nh-card p-6 space-y-5" style={{ borderColor: "rgba(96,165,250,0.22)" }}>
-                <div className="flex items-center justify-between">
-                  <p className="text-blue-400/70 text-xs font-semibold uppercase tracking-widest">Previous Analysis</p>
-                  <button onClick={() => setViewStep(null)} className="nh-btn-ghost px-4 py-1.5 text-xs">
-                    Continue to {step === "running" ? "Evaluating" : step.charAt(0).toUpperCase() + step.slice(1)} →
-                  </button>
-                </div>
-                <CriteriaSummary jd={jd as JdAnalysis} />
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ═══ STEP 2: RESUMES ═══════════════════════════════════ */}
-        {(view === "resumes" || (view === "preview" && !session.preview_field_results)) && (
-          <>
-            <PageHeader icon={<Upload size={16} />} title="Upload Resumes"
-              sub="Upload PDF resumes — each one is parsed into structured JSON ready for evaluation." />
-
-            {/* JD pill */}
-            {jd && (
-              <button onClick={() => setViewStep("jd")} className="w-full nh-card nh-card-hover p-5 flex items-center gap-4 text-left group">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                  style={{ background: "rgba(37,99,235,0.12)", border: "1px solid rgba(96,165,250,0.2)" }}>
-                  <FileText size={14} className="text-blue-400" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[#c8d8f0] text-sm font-medium truncate">
-                    {(jd as any).role ?? "Analysed JD"} — {((jd as any).baseline_signals?.length ?? 0)} baseline · {((jd as any).p0_signals?.length ?? 0)} P0 signals
-                  </p>
-                  {(jd as any).one_liner && (
-                    <p className="text-[#4a6080] text-xs italic truncate mt-0.5">"{(jd as any).one_liner}"</p>
-                  )}
-                </div>
-                <span className="text-[#3a5080] text-xs group-hover:text-blue-400 transition-colors shrink-0">Edit ›</span>
-              </button>
-            )}
-
-            <div className="nh-card p-8 space-y-6">
-              {/* Drop zone */}
-              <div
-                className="rounded-xl p-12 text-center cursor-pointer transition-all group"
-                style={{ border: "2px dashed rgba(96,165,250,0.2)", background: "rgba(6,15,38,0.4)" }}
-                onMouseEnter={e => (e.currentTarget.style.borderColor = "rgba(96,165,250,0.45)")}
-                onMouseLeave={e => (e.currentTarget.style.borderColor = "rgba(96,165,250,0.2)")}
-                onClick={() => fileRef.current?.click()}
-              >
-                <div className="w-12 h-12 mx-auto rounded-xl flex items-center justify-center mb-4 nh-float text-blue-400"
-                  style={{ background: "rgba(37,99,235,0.1)", border: "1px solid rgba(96,165,250,0.2)" }}>
-                  <Upload size={22} />
-                </div>
-
-                {files.length > 0 ? (
-                  <div className="space-y-2">
-                    <p className="text-blue-400 font-semibold">{files.length} PDF{files.length > 1 ? "s" : ""} selected</p>
-                    <p className="text-[#4a6080] text-xs">{files.map(f => f.name).join(", ").slice(0, 90)}{files.map(f => f.name).join(", ").length > 90 ? "…" : ""}</p>
-                    <button onClick={e => { e.stopPropagation(); setFiles([]); }} className="text-[#3a5080] hover:text-red-400 text-xs transition-colors mt-1">
-                      Clear
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    <p className="text-[#6c80a8] text-sm">Click to select PDF resumes</p>
-                    <p className="text-[#3a5080] text-xs">Multiple files supported</p>
-                  </div>
-                )}
-
-                <input ref={fileRef} type="file" accept=".pdf" multiple className="hidden"
-                  onChange={e => setFiles(Array.from(e.target.files ?? []))} />
-              </div>
-
-              <div className="flex items-center gap-4 flex-wrap">
-                <button onClick={uploadResumes} disabled={busy || !files.length} className="nh-btn-primary flex items-center gap-2 px-6 py-3 text-sm">
-                  {busy ? <><Spinner sm /> Parsing…</> : "Parse Resumes"}
-                </button>
-                {busy && <BounceMsg msgs={RESUME_MSGS} />}
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* Resumes parsed confirmation */}
-        {view === "resumes" && ["resumes_uploaded", "rubric_ready"].includes(session.status) && (
-          <ParseConfirmation session={session} resumes={resumes} id={id} busy={busy}
-            onToggleExemplar={toggleExemplar} onRubricFromExemplars={() => run(() => api.rubricFromExemplars(id))}
-            onStartPreview={startPreview} />
-        )}
-
-        {/* ═══ STEP 3: PREVIEW ══════════════════════════════════ */}
-        {view === "preview" && session.preview_field_results && (
-          <div className="space-y-8">
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-              <PageHeader icon={<RefreshCw size={16} />} title="Preview & Refine"
-                sub="A sample of candidates has been scored. Review results, give feedback, and refine criteria in plain English." />
-              <span className="nh-inset px-4 py-1.5 text-xs font-mono text-blue-300 shrink-0 self-center">
-                Iteration {session.preview_iteration_count}
-              </span>
-            </div>
-
-            {/* What changed */}
-            {config && (config as any).synthesis_notes && (
-              <div className="nh-card p-5 space-y-2" style={{ background: "rgba(6,30,80,0.55)", borderColor: "rgba(96,165,250,0.25)" }}>
-                <p className="text-blue-400/70 text-[10px] font-semibold uppercase tracking-widest">What changed this iteration</p>
-                <p className="text-[#a8c8f0] text-sm leading-relaxed">{(config as any).synthesis_notes}</p>
-              </div>
-            )}
-
-            {/* Lessons learned */}
-            {config && Array.isArray((config as any).lessons_learned) && (config as any).lessons_learned.length > 0 && (
-              <LessonsLearnedPanel lessons={(config as any).lessons_learned as LessonLearned[]} />
-            )}
-
-            {/* Active rubric */}
-            <ActiveRubricPanel config={config} onEdit={patchReclassify} />
-
-            {/* Instruction history */}
-            {session.extra_params_history.length > 0 && (
-              <div className="space-y-3">
-                <p className="text-[#3a5080] text-xs font-semibold uppercase tracking-widest">Refinement History</p>
-                <div className="space-y-2">
-                  {session.extra_params_history.map((p: any, i: number) => {
-                    const text = p.instructions || [p.include && `+${p.include}`, p.exclude && `−${p.exclude}`].filter(Boolean).join(" · ");
-                    if (!text) return null;
-                    return (
-                      <div key={i} className="nh-inset px-4 py-3 flex items-start gap-3">
-                        <span className="text-blue-500/40 font-mono text-[10px] font-bold mt-0.5 shrink-0">#{i + 1}</span>
-                        <span className="text-[#8899b8] text-xs leading-relaxed">{text}</span>
+          <DeskCard title="Candidate queue" icon={Search}>
+            {results.length === 0 ? (
+              <p className="text-sm leading-6 text-[#777064]">Candidate evidence appears here after calibration starts.</p>
+            ) : (
+              <div className="max-h-[520px] space-y-2 overflow-y-auto pr-1">
+                {results.map((candidate, index) => {
+                  const tone = candidateTone(candidate);
+                  return (
+                    <button
+                      key={`${candidate.candidate_name}-${index}`}
+                      onClick={() => setSelectedIndex(index)}
+                      className={`w-full rounded-xl border p-3 text-left transition ${index === selectedIndex ? "border-[#151411] bg-[#f3ecdf]" : "border-[#ebe5d9] bg-white hover:border-[#cdbfaa]"}`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="line-clamp-1 text-sm font-black">{candidate.candidate_name || `Candidate ${index + 1}`}</p>
+                        <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ color: tone.color, background: tone.bg }}>{tone.label}</span>
                       </div>
-                    );
-                  })}
+                      <div className="mt-2 flex items-center gap-2 text-xs text-[#777064]">
+                        <span>{pct(candidate.overall_score)} overall</span>
+                        <span>/</span>
+                        <span>{pct(candidate.p0_score)} P0</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </DeskCard>
+        </aside>
+
+        <section className="min-w-0 space-y-4">
+          {step === "jd" && (
+            <DeskCard title="Draft the role brief" icon={FileText} wide>
+              <p className="mb-4 text-sm leading-6 text-[#645d52]">Paste the complete JD. The system will turn it into hard filters, priority signals, red flags, and calibration questions.</p>
+              <Textarea
+                value={jdText}
+                onChange={(e) => setJdText(e.target.value)}
+                rows={15}
+                placeholder="Paste the job description here..."
+                className="min-h-[340px] resize-none border-[#ded8cc] bg-[#fffdf8] text-[#151411] placeholder:text-[#a49a8b]"
+              />
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <ActionButton onClick={analyzeJD} disabled={busy || !jdText.trim()} icon={Brain} label={busy ? "Analyzing" : "Analyze JD"} busy={busy} />
+                <p className="text-xs text-[#777064]">Output becomes the rubric starting point, not a locked decision.</p>
+              </div>
+            </DeskCard>
+          )}
+
+          {step === "resumes" && (
+            <DeskCard title="Build the candidate batch" icon={Upload} wide>
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
+                <div>
+                  <button
+                    onClick={() => fileRef.current?.click()}
+                    className="grid min-h-[260px] w-full place-items-center rounded-2xl border border-dashed border-[#cbbda8] bg-[#fffdf8] p-6 text-center transition hover:border-[#151411]"
+                  >
+                    <div>
+                      <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[#ede7da]"><Upload size={22} /></span>
+                      <p className="mt-4 text-sm font-black">{files.length ? `${files.length} PDF resumes selected` : "Select PDF resumes"}</p>
+                      <p className="mt-2 text-xs leading-5 text-[#777064]">Upload a batch, parse structured evidence, then run a calibration sample before final scoring.</p>
+                    </div>
+                  </button>
+                  <input ref={fileRef} type="file" multiple accept=".pdf" className="hidden" onChange={(e) => setFiles(Array.from(e.target.files || []))} />
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <ActionButton onClick={uploadResumes} disabled={busy || !files.length} icon={Upload} label={busy ? "Parsing" : "Parse resumes"} busy={busy} />
+                    {resumes.length > 0 && <ActionButton onClick={startCalibration} disabled={busy} icon={Play} label="Start calibration" />}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-[#ebe5d9] bg-[#fffdf8] p-4">
+                  <p className="text-xs font-bold uppercase tracking-[.16em] text-[#9b6a2f]">Parsed evidence</p>
+                  <div className="mt-4 space-y-2">
+                    {resumes.length === 0 ? <p className="text-sm text-[#777064]">No resumes parsed yet.</p> : resumes.map((resume) => (
+                      <div key={resume.id} className="flex items-center justify-between gap-2 rounded-lg border border-[#ebe5d9] bg-white px-3 py-2">
+                        <span className="truncate text-xs font-semibold">{resume.file_name}</span>
+                        <span className="text-[10px] font-bold uppercase tracking-[.12em] text-[#027a48]">Ready</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
-            )}
+            </DeskCard>
+          )}
 
-            {/* Exemplar panel */}
-            {resumes.length > 0 && (
-              <ExemplarPanel resumes={resumes} id={id} open={exemplarOpen}
-                onToggle={() => setExemplarOpen(v => !v)} onToggleExemplar={toggleExemplar}
-                onRubricFromExemplars={() => run(() => api.rubricFromExemplars(id))} busy={busy} />
-            )}
-
-            {/* Results */}
-            <FieldMatchTable results={session.preview_field_results} sessionId={id}
-              resumes={resumes} onFeedback={immediateFeedback} />
-
-            <Separator className="opacity-10" />
-
-            {/* Refine input */}
-            <div className="nh-card p-6 space-y-4">
-              <div className="flex items-center gap-3 flex-wrap">
-                <p className="text-[#c8d8f0] text-sm font-semibold">Refine the Criteria</p>
-                <span className="nh-inset px-3 py-1 text-[10px] text-blue-400">AI confirms before applying</span>
-              </div>
-              <Textarea
-                placeholder={`e.g. "Require IIT/IIM, drop consulting requirement, raise weight for 0-to-1 builders to 40%, make B2B SaaS a hard filter"`}
-                value={instrText}
-                onChange={e => { setInstrText(e.target.value); setInterpretRes(null); }}
-                rows={3}
-                className="w-full text-sm resize-none"
-              />
-
-              {/* AI interpret confirmation */}
-              {interpretRes && (
-                <div className="nh-card p-5 space-y-4" style={{ background: "rgba(6,30,80,0.55)", borderColor: "rgba(96,165,250,0.3)" }}>
-                  <p className="text-blue-400/70 text-[10px] font-semibold uppercase tracking-widest">AI Interpretation — confirm?</p>
-                  <p className="text-[#a8c8f0] text-sm leading-relaxed">{interpretRes.interpretation}</p>
-                  {interpretRes.will_do.length > 0 && (
-                    <ul className="space-y-1.5">
-                      {interpretRes.will_do.map((a, i) => (
-                        <li key={i} className="flex items-start gap-2 text-xs text-[#8899b8]">
-                          <span className="text-blue-500 mt-0.5 shrink-0">→</span><span>{a}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <p className="text-[#93c5fd] text-sm font-medium">{interpretRes.confirmation_prompt}</p>
-                  <div className="flex gap-3">
-                    <button onClick={doRefine} disabled={busy} className="nh-btn-primary flex items-center gap-2 px-5 py-2 text-sm">
-                      {busy ? <Spinner sm /> : "Yes, apply"}
-                    </button>
-                    <button onClick={() => setInterpretRes(null)} className="nh-btn-ghost px-5 py-2 text-sm">Cancel</button>
+          {(step === "calibration" || step === "results" || step === "running") && (
+            <DeskCard title={step === "results" ? "Final shortlist evidence" : "Calibration review"} icon={PanelRightOpen} wide>
+              {step === "running" ? (
+                <RunningPanel session={session} />
+              ) : selected ? (
+                <CandidateReview
+                  candidate={selected}
+                  tone={selectedTone}
+                  note={reviewNotes[selected.candidate_name] || ""}
+                  setNote={(value) => setReviewNotes((notes) => ({ ...notes, [selected.candidate_name]: value }))}
+                  onAction={sendCandidateFeedback}
+                  resume={selectedResume}
+                  sessionId={id}
+                />
+              ) : (
+                <div className="grid min-h-[420px] place-items-center rounded-2xl border border-[#ebe5d9] bg-[#fffdf8] p-6 text-center">
+                  <div>
+                    <CircleDashed className="mx-auto text-[#a49a8b]" />
+                    <p className="mt-3 text-sm font-bold">No scored candidates yet</p>
+                    <p className="mt-2 max-w-sm text-sm leading-6 text-[#777064]">Start calibration after parsing resumes to review candidate evidence here.</p>
+                    {resumes.length > 0 && <button onClick={startCalibration} className="mt-4 rounded-lg bg-[#151411] px-4 py-2 text-sm font-bold text-white">Start calibration</button>}
                   </div>
                 </div>
               )}
+            </DeskCard>
+          )}
+        </section>
 
-              <div className="flex gap-3 flex-wrap pt-2">
-                <button onClick={requestRefine} disabled={busy || interpretPend} className="nh-btn-primary flex items-center gap-2 px-6 py-2.5 text-sm">
-                  {interpretPend ? <><Spinner sm /> Interpreting…</>
-                    : busy ? <><Spinner sm /> Re-evaluating…</>
-                    : "Re-evaluate"}
-                </button>
-                <button onClick={reloadPreview} disabled={busy} className="nh-btn-ghost flex items-center gap-2 px-5 py-2.5 text-sm">
-                  + 2 More Resumes
-                </button>
-                <button onClick={acceptAll} disabled={busy} className="nh-btn-success flex items-center gap-2 px-6 py-2.5 text-sm">
-                  {busy ? <Spinner sm /> : <Check size={14} />} Accept & Full Eval
-                </button>
-              </div>
-              {busy && <BounceMsg msgs={PROC_MSGS} />}
+        <aside className="min-w-0 space-y-4">
+          <DeskCard title="Recruiter actions" icon={ClipboardCheck}>
+            <div className="grid gap-2">
+              {step === "calibration" && <ActionButton onClick={loadMoreCalibration} disabled={busy} icon={RefreshCcw} label="Add 2 more resumes" secondary />}
+              {step === "calibration" && <ActionButton onClick={finalRun} disabled={busy} icon={BadgeCheck} label="Run final shortlist" />}
+              {step === "resumes" && resumes.length > 0 && <ActionButton onClick={startCalibration} disabled={busy} icon={Play} label="Start calibration" />}
+              {step === "results" && <ActionButton onClick={() => router.push("/")} icon={ArrowRight} label="Back to hiring desk" secondary />}
+              {busy && <p className="text-xs text-[#777064]">Working through the model call. Keep this page open for live feedback.</p>}
             </div>
-          </div>
-        )}
+          </DeskCard>
 
-        {/* ═══ STEP 3.5: RUNNING ════════════════════════════════ */}
-        {view !== "results" && step === "running" && (
-          <FullEvalProgress session={session} />
-        )}
+          <DeskCard title="Rubric cockpit" icon={Layers3}>
+            {jd ? <RubricPanel jd={jd} rubric={rubric} /> : <p className="text-sm leading-6 text-[#777064]">Analyze the JD to see hard filters, P0 signals, red flags, and calibration questions.</p>}
+          </DeskCard>
 
-        {/* ═══ STEP 4: RESULTS ══════════════════════════════════ */}
-        {view === "results" && step === "results" && session.full_results && (
-          <div className="space-y-8">
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-              <PageHeader icon={<Trophy size={16} />} title="Full Evaluation Results" sub="Every candidate scored against your final rubric — ranked by fit, not subjectivity." />
-              <button onClick={() => router.push("/")} className="nh-btn-ghost flex items-center gap-2 px-5 py-2 text-sm self-center">
-                <ArrowLeft size={14} /> All Sessions
-              </button>
+          <DeskCard title="Teach the model" icon={MessageSquareText}>
+            <p className="text-sm leading-6 text-[#645d52]">Use plain language to adjust what the model should reward, relax, or reject.</p>
+            <Textarea
+              value={instruction}
+              onChange={(e) => setInstruction(e.target.value)}
+              rows={4}
+              placeholder="Example: Do not reject candidates without EdTech if they have strong consumer product launches."
+              className="mt-3 resize-none border-[#ded8cc] bg-[#fffdf8] text-[#151411] placeholder:text-[#a49a8b]"
+            />
+            <button
+              onClick={refine}
+              disabled={busy || !instruction.trim() || !session.preview_field_results}
+              className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[#151411] bg-[#151411] px-3 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {busy ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+              Apply to calibration
+            </button>
+          </DeskCard>
+
+          <DeskCard title="Run details" icon={Eye}>
+            <div className="grid gap-2 text-sm">
+              <InfoRow label="Resumes parsed" value={String(resumes.length)} />
+              <InfoRow label="P0 in view" value={summary ? String(summary.p0_count) : "--"} />
+              <InfoRow label="Blocked" value={summary ? String(summary.reject_count) : "--"} />
+              <InfoRow label="Token usage" value={session.token_totals?._total_tokens ? Number(session.token_totals._total_tokens).toLocaleString() : "--"} />
             </div>
-            <RubricAuditPanel config={session.final_config ?? session.synthesized_config} />
-            <FieldMatchTable results={session.full_results} sessionId={id} resumes={resumes} />
-            {session.full_results._skipped && <SkippedPanel skipped={session.full_results._skipped} />}
-            <TokenPanel totals={session.token_totals || {}} />
-          </div>
-        )}
+          </DeskCard>
+        </aside>
       </div>
-    </div>
+    </main>
   );
 }
 
-/* ── PageHeader ────────────────────────────────────────────────────── */
-function PageHeader({ icon, title, sub }: { icon: React.ReactNode; title: string; sub: string }) {
+function StepPill({ label, active, done }: { label: string; active?: boolean; done?: boolean }) {
   return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-3">
-        <span
-          className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 text-blue-400"
-          style={{ background: "rgba(79,110,247,0.1)", border: "1px solid rgba(79,110,247,0.2)" }}
-        >
-          {icon}
-        </span>
-        <h2 className="text-xl font-black text-white tracking-tight">{title}</h2>
-      </div>
-      <p className="text-[#566b99] text-sm leading-relaxed max-w-lg">{sub}</p>
-    </div>
-  );
-}
-
-/* ── StepNav ───────────────────────────────────────────────────────── */
-function StepNav({ current, view, onNavigate }: { current: Step; view: Step; onNavigate: (s: Step) => void }) {
-  const displaySteps: Step[] = ["jd", "resumes", "preview", "results"];
-  const labels: Record<Step, string> = { jd: "JD", resumes: "Resumes", preview: "Preview", running: "Running", results: "Results" };
-  const currentIdx = STEP_ORDER.indexOf(current === "running" ? "preview" : current);
-
-  return (
-    <div className="px-8 py-2.5 border-t" style={{ borderColor: "rgba(96,165,250,0.07)" }}>
-      <div className="flex items-center max-w-lg">
-        {displaySteps.map((key, i) => {
-          const stepIdx     = STEP_ORDER.indexOf(key);
-          const isDone      = stepIdx < currentIdx;
-          const isActive    = key === view || (key === "preview" && view === "running");
-          const isReachable = stepIdx <= currentIdx;
-          const isLast      = i === displaySteps.length - 1;
-
-          return (
-            <div key={key} className="flex items-center flex-1 last:flex-none">
-              <button
-                onClick={() => isReachable && onNavigate(key)}
-                disabled={!isReachable}
-                title={isReachable ? `Go to ${labels[key]}` : undefined}
-                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all ${
-                  isActive    ? "text-blue-300"
-                  : isDone    ? "text-[#4a6080] hover:text-[#8899b8] cursor-pointer"
-                  :              "text-[#2a3a5a] cursor-not-allowed"
-                }`}
-              >
-                <span
-                  className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0 transition-all ${
-                    isActive ? "text-white" : isDone ? "text-[#6c80a8]" : "text-[#2a3a5a]"
-                  }`}
-                  style={{
-                    background: isActive
-                      ? "linear-gradient(135deg,#2563eb,#0ea5e9)"
-                      : isDone ? "rgba(96,165,250,0.12)" : "transparent",
-                    border: `1px solid ${isActive ? "transparent" : isDone ? "rgba(96,165,250,0.25)" : "rgba(96,165,250,0.08)"}`,
-                    boxShadow: isActive ? "0 0 10px rgba(37,99,235,0.4)" : "none",
-                  }}
-                >
-                  {isDone ? <Check size={9} className="mx-auto" /> : i + 1}
-                </span>
-                <span className="hidden sm:block">{labels[key]}</span>
-              </button>
-              {!isLast && (
-                <div
-                  className="flex-1 h-px mx-0.5"
-                  style={{
-                    background: isDone
-                      ? "linear-gradient(90deg, rgba(96,165,250,0.3), rgba(96,165,250,0.15))"
-                      : "rgba(96,165,250,0.06)",
-                  }}
-                />
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/* ── CriteriaSummary ───────────────────────────────────────────────── */
-function CriteriaSummary({ jd }: { jd: JdAnalysis }) {
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap gap-2">
-        {jd.role_type && <Tag text={jd.role_type} color="slate" />}
-        {jd.role_context?.seniority_level && <Tag text={jd.role_context.seniority_level} color="blue" label="Seniority" />}
-        {jd.role_context?.archetype && <Tag text={jd.role_context.archetype} color="purple" label="Archetype" />}
-        {jd.role_context?.org_stage && <Tag text={jd.role_context.org_stage} color="green" label="Stage" />}
-        {jd.jd_quality_score && (
-          <Tag text={`JD Quality: ${jd.jd_quality_score}/10`}
-            color={jd.jd_quality_score >= 7 ? "green" : jd.jd_quality_score >= 4 ? "amber" : "red"} />
-        )}
-      </div>
-
-      {jd.one_liner && (
-        <div className="pl-4 py-2" style={{ borderLeft: "2px solid rgba(59,130,246,0.4)" }}>
-          <p className="text-[#8899b8] text-sm italic">"{jd.one_liner}"</p>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <SignalList title="Baseline Signals" color="#6c80a8" items={jd.baseline_signals ?? []} bullet="•" />
-        <SignalList title="P0 Signals (Priority)" color="#f59e0b" items={jd.p0_signals ?? []} bullet="✦" bulletColor="#f59e0b" />
-      </div>
-
-      {(jd.red_flags?.length ?? 0) > 0 && (
-        <div className="space-y-2">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-red-400/70">Red Flags</p>
-          <div className="flex flex-wrap gap-2">
-            {(jd.red_flags ?? []).map((f, i) => (
-              <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
-                style={{ background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.2)" }}>
-                <span className="text-xs text-[#e2e8f0]">{f.flag}</span>
-                {f.risk_type && <span className="text-[9px] font-mono text-red-400/60 uppercase">{f.risk_type.replace(/_/g, " ")}</span>}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {(jd.vague_requirements?.length ?? 0) > 0 && (
-        <div className="space-y-2">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-[#3a5080]">Unverifiable Phrasing</p>
-          <div className="flex flex-wrap gap-1.5">
-            {(jd.vague_requirements ?? []).map((r, i) => (
-              <span key={i} className="nh-inset text-[#4a6080] text-[10px] px-2 py-0.5 rounded" title="Too vague for objective scoring">{r}</span>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Tag({ text, color, label }: { text: string; color: string; label?: string }) {
-  const styles: Record<string, string> = {
-    blue:   "background:rgba(37,99,235,0.12);border:1px solid rgba(96,165,250,0.25);color:#93c5fd",
-    cyan:   "background:rgba(6,182,212,0.1);border:1px solid rgba(34,211,238,0.25);color:#67e8f9",
-    purple: "background:rgba(139,92,246,0.1);border:1px solid rgba(167,139,250,0.25);color:#c4b5fd",
-    green:  "background:rgba(5,150,105,0.1);border:1px solid rgba(52,211,153,0.25);color:#6ee7b7",
-    amber:  "background:rgba(245,158,11,0.1);border:1px solid rgba(251,191,36,0.25);color:#fcd34d",
-    red:    "background:rgba(239,68,68,0.1);border:1px solid rgba(248,113,113,0.25);color:#fca5a5",
-    slate:  "background:rgba(96,165,250,0.06);border:1px solid rgba(96,165,250,0.14);color:#6c80a8",
-  };
-  return (
-    <span className="text-[10px] px-2.5 py-1 rounded-full font-semibold uppercase tracking-wide" style={{ cssText: styles[color] } as any}>
-      {label ? `${label}: ` : ""}{text}
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold ${active ? "border-[#151411] bg-[#151411] text-white" : done ? "border-[#b6a88f] bg-[#ede7da] text-[#151411]" : "border-[#ded8cc] bg-white text-[#8b8376]"}`}>
+      {done ? <Check size={11} /> : <CircleDashed size={11} />}
+      {label}
     </span>
   );
 }
 
-function SignalList({ title, color, items, bullet, bulletColor }: { title: string; color: string; items: string[]; bullet: string; bulletColor?: string }) {
+function DeskCard({ title, icon: Icon, children, wide }: { title: string; icon: any; children: React.ReactNode; wide?: boolean }) {
   return (
-    <div className="space-y-3">
-      <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color }}>{title}</p>
-      <div className="space-y-2">
-        {items.length ? items.map((s, i) => (
-          <div key={i} className="flex gap-2.5 text-sm text-[#c8d8f0] leading-relaxed">
-            <span className="mt-0.5 shrink-0" style={{ color: bulletColor ?? "#4a6080" }}>{bullet}</span>
-            <span>{s}</span>
-          </div>
-        )) : <p className="text-xs text-[#2a3a5a] italic">None extracted</p>}
+    <section className={`min-w-0 rounded-2xl border border-[#ded8cc] bg-white shadow-sm ${wide ? "p-5 sm:p-6" : "p-4"}`}>
+      <div className="mb-4 flex items-center gap-3">
+        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#ede7da] text-[#151411]"><Icon size={17} /></span>
+        <h2 className="text-sm font-black tracking-tight">{title}</h2>
       </div>
+      {children}
+    </section>
+  );
+}
+
+function ReadinessRow({ label, done }: { label: string; done: boolean }) {
+  return (
+    <div className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-[#ebe5d9] bg-[#fffdf8] px-3 py-2">
+      <span className="min-w-0 truncate text-sm text-[#4d473d]">{label}</span>
+      {done ? <CheckCircle2 size={15} className="text-emerald-600" /> : <CircleDashed size={15} className="text-[#b7ad9d]" />}
     </div>
   );
 }
 
-/* ── ParseConfirmation ─────────────────────────────────────────────── */
-function ParseConfirmation({ session, resumes, id, busy, onToggleExemplar, onRubricFromExemplars, onStartPreview }: {
-  session: Session; resumes: ResumeListItem[]; id: string; busy: boolean;
-  onToggleExemplar: (n: string, c: boolean) => void;
-  onRubricFromExemplars: () => void;
-  onStartPreview: () => void;
+function ActionButton({ onClick, disabled, icon: Icon, label, busy, secondary }: { onClick: () => void; disabled?: boolean; icon: any; label: string; busy?: boolean; secondary?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${secondary ? "border border-[#ded8cc] bg-white text-[#151411] hover:border-[#151411]" : "border border-[#151411] bg-[#151411] text-white hover:bg-[#2a2823]"}`}
+    >
+      {busy ? <Loader2 size={15} className="animate-spin" /> : <Icon size={15} />}
+      {label}
+    </button>
+  );
+}
+
+function CandidateReview({ candidate, tone, note, setNote, onAction, resume, sessionId }: {
+  candidate: CandidateResult;
+  tone: { label: string; color: string; bg: string; border: string };
+  note: string;
+  setNote: (value: string) => void;
+  onAction: (action: ActionTone) => void;
+  resume?: ResumeListItem;
+  sessionId: string;
 }) {
-  const ok  = resumes.filter(r => isReadable(r));
-  const bad = resumes.filter(r => !isReadable(r));
-  const starred = resumes.filter(r => r.is_exemplar).length;
-
-  return (
-    <div className="nh-card p-8 space-y-7">
-      {/* Parse summary */}
-      <div className="flex items-center gap-5 flex-wrap">
-        <span className="flex items-center gap-2 text-emerald-400 text-sm font-medium">
-          <span className="nh-dot-green" />
-          {ok.length} resume{ok.length !== 1 ? "s" : ""} parsed
-        </span>
-        {bad.length > 0 && (
-          <span className="flex items-center gap-2 text-amber-400 text-sm">
-            <span className="nh-dot-amber" />
-            {bad.length} unreadable
-          </span>
-        )}
-      </div>
-
-      {bad.length > 0 && (
-        <div className="nh-inset p-4 space-y-3" style={{ borderColor: "rgba(245,158,11,0.25)" }}>
-          <p className="text-amber-400 text-xs font-semibold uppercase tracking-wider">Unreadable PDFs — excluded</p>
-          <p className="text-[#4a6080] text-xs leading-relaxed">Likely scanned image PDFs. Re-upload as text-based PDFs to include them.</p>
-          {bad.map((r, i) => {
-            const reasons = (r.quality as any)?.reasons ?? [];
-            return (
-              <div key={i} className="flex gap-2 text-xs">
-                <span className="text-amber-500 shrink-0">•</span>
-                <span className="text-[#8899b8] font-mono">{r.file_name}</span>
-                {reasons[0] && <span className="text-[#3a5080]">— {reasons[0]}</span>}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {session.status === "rubric_ready" && (
-        <div className="nh-inset p-4 space-y-1" style={{ borderColor: "rgba(245,158,11,0.25)" }}>
-          <p className="text-amber-300 text-sm font-semibold">Rubric generated from ideal resumes</p>
-          <p className="text-[#4a6080] text-xs">Reverse-engineered from your starred examples. Click "Start Preview Loop" to evaluate candidates.</p>
-        </div>
-      )}
-
-      {/* Exemplar list */}
-      {resumes.length > 0 && (
-        <div className="space-y-3">
-          <p className="text-[#3a5080] text-xs font-semibold uppercase tracking-widest">
-            Mark ideal resumes to generate a rubric from examples
-          </p>
-          <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
-            {resumes.map(r => (
-              <div key={r.file_name} className="nh-inset flex items-center justify-between gap-3 px-4 py-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
-                    isReadable(r) ? "text-emerald-400" : "text-[#3a5080]"
-                  }`}
-                    style={{ background: isReadable(r) ? "rgba(5,150,105,0.1)" : "rgba(30,50,100,0.3)" }}>
-                    {isReadable(r) ? "ok" : "skip"}
-                  </span>
-                  <span className="text-[#8899b8] text-xs font-mono truncate">{r.file_name}</span>
-                </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  <a href={`${BASE}/api/sessions/${id}/resumes/${encodeURIComponent(r.file_name)}/pdf`}
-                    target="_blank" rel="noopener noreferrer"
-                    className="text-[#3a5080] hover:text-blue-400 transition-colors" title="View PDF">
-                    <ExternalLink size={11} /></a>
-                  <button onClick={() => onToggleExemplar(r.file_name, r.is_exemplar)}
-                    className={`text-lg transition-colors ${r.is_exemplar ? "text-amber-400" : "text-[#2a3a5a] hover:text-[#4a6080]"}`}>
-                    <Star size={14} fill={r.is_exemplar ? "currentColor" : "none"} className={r.is_exemplar ? "text-amber-400" : "text-[#2a3a5a] hover:text-[#4a6080]"} />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-          {starred >= 2
-            ? <button onClick={onRubricFromExemplars} disabled={busy} className="nh-btn-ghost flex items-center gap-2 px-4 py-2 text-xs"
-                style={{ color: "#fcd34d", borderColor: "rgba(245,158,11,0.3)" }}>
-                {busy ? <Spinner sm /> : <Star size={11} />} Generate Rubric from {starred} Ideal Resumes
-              </button>
-            : <p className="text-[#2a3a5a] text-xs">Star 2+ resumes to unlock rubric generation from examples</p>
-          }
-        </div>
-      )}
-
-      <div className="pt-2 border-t" style={{ borderColor: "rgba(96,165,250,0.1)" }}>
-        <button onClick={onStartPreview} disabled={busy} className="nh-btn-primary flex items-center gap-2 px-8 py-3 text-sm">
-          {busy ? <><Spinner sm /> Running preview…</> : <><Play size={14} /> Start Preview Loop</>}
-        </button>
-        {busy && <div className="mt-4"><BounceMsg msgs={PROC_MSGS} /></div>}
-      </div>
-    </div>
+  const evidence = candidate.field_matches || [];
+  const pdfUrl = resume ? `${BASE}/api/sessions/${sessionId}/resumes/${encodeURIComponent(resume.file_name)}/pdf` : "";
+  const baseTone = baselineTone(candidate.baseline_pass);
+  const [pdfOpen, setPdfOpen] = useState(false);
+  const referral = referralInsight(resume);
+  const counts = evidence.reduce(
+    (acc, item) => {
+      if (item.match === "pass") acc.pass += 1;
+      else if (item.match === "fail") acc.fail += 1;
+      else acc.review += 1;
+      return acc;
+    },
+    { pass: 0, fail: 0, review: 0 },
   );
-}
-
-function isReadable(r: ResumeListItem) {
-  const q = r.quality as any;
-  if (!q) return true;
-  if ("text_extractable" in q) return !!q.text_extractable;
-  return !!q.readable;
-}
-
-/* ── ExemplarPanel ─────────────────────────────────────────────────── */
-function ExemplarPanel({ resumes, id, open, onToggle, onToggleExemplar, onRubricFromExemplars, busy }: {
-  resumes: ResumeListItem[]; id: string; open: boolean; busy: boolean;
-  onToggle: () => void;
-  onToggleExemplar: (n: string, c: boolean) => void;
-  onRubricFromExemplars: () => void;
-}) {
-  const starred = resumes.filter(r => r.is_exemplar).length;
   return (
-    <div className="nh-card overflow-hidden">
-      <button onClick={onToggle} className="w-full flex items-center justify-between px-6 py-4 text-sm font-medium transition-all hover:bg-white/[.015]">
-        <span className="flex items-center gap-2 text-[#8899b8]">
-          <Star size={12} className="text-amber-400" /> Mark Ideal Resumes
-          {starred > 0 && <span className="text-amber-400">({starred} starred)</span>}
-        </span>
-        {open ? <ChevronUp size={14} className="text-[#3a5080]" /> : <ChevronDown size={14} className="text-[#3a5080]" />}
-      </button>
-      {open && (
-        <div className="px-6 pb-6 border-t space-y-3 pt-4" style={{ borderColor: "rgba(96,165,250,0.08)" }}>
-          <div className="space-y-2 max-h-44 overflow-y-auto">
-            {resumes.map(r => (
-              <div key={r.file_name} className="nh-inset flex items-center justify-between gap-3 px-4 py-2.5">
-                <div className="flex items-center gap-3 min-w-0">
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${isReadable(r) ? "text-emerald-400" : "text-[#3a5080]"}`}
-                    style={{ background: isReadable(r) ? "rgba(5,150,105,0.1)" : "rgba(30,50,100,0.3)" }}>
-                    {isReadable(r) ? "ok" : "skip"}
-                  </span>
-                  <span className="text-[#8899b8] text-xs font-mono truncate">{r.file_name}</span>
-                </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  <a href={`${BASE}/api/sessions/${id}/resumes/${encodeURIComponent(r.file_name)}/pdf`} target="_blank" rel="noopener noreferrer"
-                    className="text-[#3a5080] hover:text-blue-400 text-xs transition-colors"><ExternalLink size={11} /></a>
-                  <button onClick={() => onToggleExemplar(r.file_name, r.is_exemplar)}
-                    className={`text-lg transition-colors ${r.is_exemplar ? "text-amber-400" : "text-[#2a3a5a] hover:text-[#4a6080]"}`}>
-                    <Star size={14} fill={r.is_exemplar ? "currentColor" : "none"} className={r.is_exemplar ? "text-amber-400" : "text-[#2a3a5a] hover:text-[#4a6080]"} />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-          {starred >= 2
-            ? <button onClick={onRubricFromExemplars} disabled={busy} className="nh-btn-ghost text-xs px-4 py-2"
-                style={{ color: "#fcd34d", borderColor: "rgba(245,158,11,0.3)" }}>
-                {busy ? "Generating…" : `Regenerate Rubric from ${starred} Ideal Resumes`}
-              </button>
-            : <p className="text-[#2a3a5a] text-xs">Star 2+ resumes to regenerate the rubric</p>
-          }
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── LessonsLearnedPanel ───────────────────────────────────────────── */
-function LessonsLearnedPanel({ lessons }: { lessons: LessonLearned[] }) {
-  const [open, setOpen] = useState(false);
-  if (!lessons?.length) return null;
-
-  const actionCls = (a?: string) =>
-    a === "should_pass" || a === "p0_booster" ? "text-emerald-400 border-emerald-500/25 bg-emerald-500/[.05]"
-    : a === "should_fail" ? "text-red-400 border-red-500/25 bg-red-500/[.05]"
-    : "text-[#6c80a8] border-white/10";
-
-  const actionLabel = (a?: string) =>
-    a === "should_pass" ? "Should PASS" : a === "should_fail" ? "Should FAIL" : a === "p0_booster" ? "P0 Boost" : a ?? "Feedback";
-
-  return (
-    <div className="nh-card overflow-hidden" style={{ borderColor: "rgba(245,158,11,0.2)" }}>
-      <button onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center justify-between px-6 py-4 text-left transition-all"
-        style={{ background: "rgba(120,80,0,0.08)" }}>
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-semibold text-amber-300">Rubric Shift Log</span>
-          <span className="nh-inset px-2.5 py-1 text-[10px] font-mono text-amber-400"
-            style={{ borderColor: "rgba(245,158,11,0.2)" }}>
-            {lessons.length} lesson{lessons.length > 1 ? "s" : ""}
-          </span>
-        </div>
-        {open ? <ChevronUp size={13} className="text-amber-600" /> : <ChevronDown size={13} className="text-amber-600" />}
-      </button>
-      {open && (
-        <div className="px-6 py-6 border-t space-y-5" style={{ borderColor: "rgba(245,158,11,0.1)" }}>
-          <p className="text-[#4a6080] text-xs">Each lesson was derived from your disagree feedback and updated the rubric.</p>
-          {lessons.map((l, i) => (
-            <div key={i} className="nh-inset overflow-hidden">
-              <div className="flex items-center gap-2 px-4 py-2.5 border-b" style={{ borderColor: "rgba(96,165,250,0.06)" }}>
-                <span className="text-[10px] font-mono text-[#3a5080]">#{i + 1}</span>
-                {l.candidate && <span className="text-[10px] text-[#6c80a8] truncate">{l.candidate}</span>}
-                {l.action && (
-                  <span className={`text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border ${actionCls(l.action)}`}>
-                    {actionLabel(l.action)}
-                  </span>
-                )}
-              </div>
-              <div className="px-4 py-4 space-y-3">
-                {l.reason_given && <Field label="You said" text={`"${l.reason_given}"`} color="#6c80a8" italic />}
-                {l.lesson && <Field label="Derived rule" text={l.lesson} color="#fbbf24" />}
-                {l.rubric_change && <Field label="Rubric change" text={l.rubric_change} color="#93c5fd" mono />}
-              </div>
+    <div className="space-y-4">
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-[#ebe5d9] bg-[#fffdf8] p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0">
+              <span className="rounded-full border px-2.5 py-1 text-[11px] font-bold" style={{ color: tone.color, background: tone.bg, borderColor: tone.border }}>{tone.label}</span>
+              <h3 className="mt-3 truncate text-2xl font-black tracking-tight">{candidate.candidate_name}</h3>
+              <OneLine text={compactText(candidate.reasoning, 140)} className="mt-2 max-w-3xl text-sm text-[#645d52]" />
             </div>
+            <div className="grid grid-cols-2 gap-2 text-center">
+              <Score label="Overall" value={candidate.overall_score} />
+              <Score label="P0" value={candidate.p0_score} />
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-3">
+          {REVIEW_ACTIONS.map((action) => (
+            <button key={action.key} onClick={() => onAction(action.key)} className={`inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-black ${action.className}`}>
+              <action.icon size={16} /> {action.label}
+            </button>
           ))}
         </div>
+
+        <div className="rounded-2xl border border-[#ebe5d9] bg-white p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <MessageSquareText size={15} />
+              <div>
+                <p className="text-sm font-black">Recruiter note</p>
+                <p className="text-xs text-[#777064]">Capture the one reason behind your decision.</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {["Strong signal, keep", "Too weak, reject", "Needs human review"].map((template) => (
+                <button
+                  key={template}
+                  onClick={() => setNote(template)}
+                  className="rounded-full border border-[#ded8cc] bg-[#fffdf8] px-2.5 py-1 text-[11px] font-bold text-[#4d473d] hover:border-[#151411]"
+                >
+                  {template}
+                </button>
+              ))}
+            </div>
+          </div>
+          <Textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={2}
+            placeholder="Example: good product exposure, but ownership evidence is still unclear."
+            className="mt-3 resize-none border-[#ded8cc] bg-[#fffdf8] text-[#151411] placeholder:text-[#a49a8b]"
+          />
+          <p className="mt-2 text-xs text-[#777064]">Keyboard: J next, K previous, S shortlist, R reject, F flag.</p>
+        </div>
+
+        <div className="rounded-2xl border border-[#ebe5d9] bg-white p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2"><ShieldAlert size={15} /><p className="text-sm font-black">Evidence trail</p></div>
+            <div className="flex flex-wrap gap-2">
+              <StatusChip label={`${counts.pass} pass`} tone={matchTone("pass")} />
+              <StatusChip label={`${counts.review} review`} tone={matchTone("partial")} />
+              <StatusChip label={`${counts.fail} fail`} tone={matchTone("fail")} />
+            </div>
+          </div>
+          <div className="grid gap-2">
+            {evidence.length === 0 ? <p className="text-sm text-[#777064]">No field evidence returned.</p> : evidence.map((item, index) => <EvidenceRow key={index} item={item} />)}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
+        <div className="rounded-2xl border border-[#ebe5d9] bg-[#fffdf8] p-4">
+          <p className="text-xs font-bold uppercase tracking-[.16em] text-[#9b6a2f]">Decision detail</p>
+          <div className="mt-3 flex items-center justify-between gap-3 border-t border-[#ebe5d9] pt-3">
+            <span className="text-xs text-[#777064]">Classification</span>
+            <span className="rounded-full border px-2 py-0.5 text-xs font-black" style={{ color: tone.color, background: tone.bg, borderColor: tone.border }}>{candidate.classification}</span>
+          </div>
+          <InfoRow label="Confidence" value={candidate.confidence || "--"} />
+          <div className="mt-3 flex items-center justify-between gap-3 border-t border-[#ebe5d9] pt-3">
+            <span className="text-xs text-[#777064]">Baseline</span>
+            <span className="rounded-full border px-2 py-0.5 text-xs font-black" style={{ color: baseTone.color, background: baseTone.bg, borderColor: baseTone.border }}>{baseTone.label}</span>
+          </div>
+        </div>
+        <div className="rounded-2xl border border-[#ebe5d9] bg-[#fffdf8] p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[.16em] text-[#9b6a2f]">Resume</p>
+              <p className="mt-1 text-xs text-[#777064]">Open in a side panel without leaving review mode.</p>
+            </div>
+            {resume && <span className="truncate text-[10px] font-semibold text-[#777064]">{resume.file_name}</span>}
+          </div>
+          {resume ? (
+            <button
+              onClick={() => setPdfOpen(true)}
+              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#151411] px-3 py-2 text-sm font-bold text-white hover:bg-[#2a2823]"
+            >
+              <PanelRightOpen size={15} />
+              Open resume workspace
+            </button>
+          ) : <p className="mt-2 text-sm text-[#777064]">PDF link appears when the candidate maps to an uploaded file.</p>}
+          <div className="mt-3 rounded-lg border px-3 py-2" style={{ color: referral.found ? "#027a48" : "#b54708", background: referral.found ? "#ecfdf3" : "#fffaeb", borderColor: referral.found ? "#abefc6" : "#fedf89" }}>
+            <p className="text-xs font-black">{referral.label}</p>
+            <OneLine text={referral.detail} className="mt-1 text-xs" />
+          </div>
+        </div>
+      </div>
+      {resume && (
+        <ResumeSidePanel
+          open={pdfOpen}
+          onClose={() => setPdfOpen(false)}
+          candidateName={candidate.candidate_name}
+          fileName={resume.file_name}
+          pdfUrl={pdfUrl}
+          resume={resume}
+          sessionId={sessionId}
+        />
       )}
     </div>
   );
 }
 
-function Field({ label, text, color, italic, mono }: { label: string; text: string; color: string; italic?: boolean; mono?: boolean }) {
+function StatusChip({ label, tone }: { label: string; tone: { color: string; bg: string; border: string } }) {
   return (
-    <div className="space-y-0.5">
-      <p className="text-[9px] font-semibold uppercase tracking-wider text-[#3a5080]">{label}</p>
-      <p className={`text-xs leading-relaxed ${italic ? "italic" : ""} ${mono ? "font-mono text-[11px]" : ""}`}
-        style={{ color }}>
-        {text}
-      </p>
-    </div>
+    <span className="rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-[.08em]" style={{ color: tone.color, background: tone.bg, borderColor: tone.border }}>
+      {label}
+    </span>
   );
 }
 
-/* ── ActiveRubricPanel ─────────────────────────────────────────────── */
-function ActiveRubricPanel({ config, onEdit }: {
-  config: Record<string, unknown> | null;
-  onEdit?: (p: { baseline_checks?: BaselineCheck[]; p0_weights?: P0Weight[] }) => Promise<void>;
+function ResumeSidePanel({ open, onClose, candidateName, fileName, pdfUrl, resume, sessionId }: {
+  open: boolean;
+  onClose: () => void;
+  candidateName: string;
+  fileName: string;
+  pdfUrl: string;
+  resume: ResumeListItem;
+  sessionId: string;
 }) {
-  const [open,         setOpen]         = useState(false);
-  const [localChecks,  setLocalChecks]  = useState<BaselineCheck[]>([]);
-  const [localWeights, setLocalWeights] = useState<P0Weight[]>([]);
-  const [saveStatus,   setSaveStatus]   = useState<"idle"|"saving"|"saved">("idle");
-  const debRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const editRef = useRef(false);
+  const noteKey = `nexthire:private-note:${sessionId}:${fileName}`;
+  const noteSavedKey = `${noteKey}:saved-at`;
+  const [privateNote, setPrivateNote] = useState("");
+  const [noteSavedAt, setNoteSavedAt] = useState("");
+  const [referralOpen, setReferralOpen] = useState(false);
+  const referral = referralInsight(resume);
 
   useEffect(() => {
-    if (editRef.current || !config) return;
-    const r = (config.scoring_rubric as any) ?? {};
-    setLocalChecks(r.baseline_checks ?? []);
-    setLocalWeights(r.p0_weights ?? []);
-  }, [config]);
+    if (!open) return;
+    setPrivateNote(window.localStorage.getItem(noteKey) || "");
+    setNoteSavedAt(window.localStorage.getItem(noteSavedKey) || "");
+  }, [noteKey, noteSavedKey, open]);
 
-  if (!config) return null;
-  const rubric = (config.scoring_rubric as any) ?? {};
-  const redFlags = rubric.red_flag_checks ?? [];
-  const screening = config.screening_summary as string | undefined;
-  const prompt = config.final_evaluation_prompt as string | undefined;
-  const hard = localChecks.filter(c => c.reject_if_missing !== false);
-  const soft = localChecks.filter(c => c.reject_if_missing === false);
-  const totalW = localWeights.reduce((s, w) => s + (w.weight ?? 0), 0);
-  if (!localChecks.length && !localWeights.length && !redFlags.length) return null;
-
-  function scheduleSave(c: BaselineCheck[], w: P0Weight[]) {
-    if (!onEdit) return;
-    editRef.current = true; setSaveStatus("idle");
-    if (debRef.current) clearTimeout(debRef.current);
-    debRef.current = setTimeout(async () => {
-      setSaveStatus("saving");
-      try { await onEdit({ baseline_checks: c, p0_weights: w }); setSaveStatus("saved"); setTimeout(() => setSaveStatus("idle"), 2000); }
-      catch { setSaveStatus("idle"); } finally { editRef.current = false; }
-    }, 600);
+  function savePrivateNote(value: string) {
+    const timestamp = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+    setPrivateNote(value);
+    setNoteSavedAt(timestamp);
+    window.localStorage.setItem(noteKey, value);
+    window.localStorage.setItem(noteSavedKey, timestamp);
   }
 
-  function toggleHS(check: string) {
-    const u = localChecks.map(c => c.check === check ? { ...c, reject_if_missing: !c.reject_if_missing } : c);
-    setLocalChecks(u); scheduleSave(u, localWeights);
-  }
-  function updateW(idx: number, v: number) {
-    const u = localWeights.map((w, i) => i === idx ? { ...w, weight: v } : w);
-    setLocalWeights(u); scheduleSave(localChecks, u);
+  function appendPrivateNote(template: string) {
+    const next = privateNote ? `${privateNote}\n${template}` : template;
+    savePrivateNote(next);
   }
 
+  if (!open) return null;
   return (
-    <div className="nh-card overflow-hidden">
-      <button onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-white/[.015] transition-all">
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-sm font-semibold text-[#c8d8f0]">Active Evaluation Criteria</span>
-          <span className="nh-inset px-2.5 py-1 text-[10px] font-mono text-[#6c80a8]">
-            {hard.length} hard · {soft.length > 0 ? `${soft.length} relaxed · ` : ""}{localWeights.length} P0 · {redFlags.length} flags
-          </span>
-          {onEdit && saveStatus === "saving" && <span className="text-[10px] text-amber-400 animate-pulse">Saving…</span>}
-          {onEdit && saveStatus === "saved" && <span className="text-[10px] text-emerald-400 flex items-center gap-1"><Check size={9} /> Saved</span>}
-        </div>
-        {open ? <ChevronUp size={14} className="text-[#3a5080]" /> : <ChevronDown size={14} className="text-[#3a5080]" />}
-      </button>
-
-      {open && (
-        <div className="px-6 py-6 border-t space-y-6" style={{ borderColor: "rgba(96,165,250,0.08)" }}>
-          {screening && <p className="text-xs text-[#6c80a8] italic border-l-2 pl-4 leading-relaxed" style={{ borderColor: "rgba(59,130,246,0.3)" }}>{screening}</p>}
-          {onEdit && <p className="text-[10px] text-[#3a5080] italic">Toggle hard/soft on baseline checks, or drag P0 sliders — changes apply instantly without re-scoring.</p>}
-
-          {prompt && (
-            <details className="group">
-              <summary className="text-[10px] font-semibold uppercase tracking-wider text-[#3a5080] cursor-pointer hover:text-[#6c80a8] select-none">
-                Full Evaluation Prompt <span className="font-normal normal-case">(click to verify)</span>
-              </summary>
-              <div className="mt-2 nh-inset p-4 max-h-48 overflow-y-auto">
-                <p className="text-xs text-[#6c80a8] leading-relaxed whitespace-pre-wrap">{prompt}</p>
-              </div>
-            </details>
-          )}
-
-          {/* Hard filters */}
-          {hard.length > 0 && (
-            <div className="space-y-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-[#3a5080]">
-                Hard Filters <span className="text-red-400 font-normal">(fail = auto reject)</span>
-              </p>
-              <div className="space-y-2">
-                {hard.map(c => (
-                  <div key={c.check} className="nh-inset flex items-start gap-3 px-4 py-3"
-                    style={{ borderColor: "rgba(239,68,68,0.15)" }}>
-                    <XCircle size={13} className="text-red-400 shrink-0 mt-0.5" />
-                    <div className="min-w-0 flex-1 space-y-0.5">
-                      <p className="text-[#c8d8f0] text-xs leading-relaxed">{c.check}</p>
-                      <p className="text-[#3a5080] text-[10px]">Field: <span className="font-mono">{c.resume_field}</span></p>
-                    </div>
-                    {onEdit && (
-                      <button onClick={() => toggleHS(c.check)}
-                        className="nh-btn-ghost text-[10px] px-2 py-1 shrink-0 hover:text-emerald-400">→ Soft</button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Soft checks */}
-          {soft.length > 0 && (
-            <div className="space-y-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-[#3a5080]">
-                Relaxed Criteria <span className="text-emerald-400 font-normal">(preference, not gate)</span>
-              </p>
-              <div className="space-y-2">
-                {soft.map(c => (
-                  <div key={c.check} className="nh-inset flex items-start gap-3 px-4 py-3"
-                    style={{ borderColor: "rgba(5,150,105,0.2)" }}>
-                    <CheckCircle2 size={13} className="text-emerald-400 shrink-0 mt-0.5" />
-                    <div className="min-w-0 flex-1 space-y-0.5">
-                      <p className="text-[#c8d8f0] text-xs leading-relaxed">{c.check}</p>
-                      <p className="text-[#3a5080] text-[10px]">Field: <span className="font-mono">{c.resume_field}</span></p>
-                    </div>
-                    {onEdit && (
-                      <button onClick={() => toggleHS(c.check)}
-                        className="nh-btn-ghost text-[10px] px-2 py-1 shrink-0 hover:text-red-400">→ Hard</button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* P0 sliders */}
-          {localWeights.length > 0 && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-[#3a5080]">
-                  P0 Signal Weights <span className="font-normal">(drag to adjust)</span>
-                </p>
-                <span className={`text-[10px] font-mono ${Math.abs(totalW - 100) <= 5 ? "text-[#3a5080]" : "text-amber-400"}`}>Σ = {totalW}</span>
-              </div>
-              <div className="space-y-4">
-                {localWeights.map((w, i) => (
-                  <div key={i} className="space-y-1.5">
-                    <div className="flex items-center gap-2 text-xs">
-                      <p className="flex-1 text-[#c8d8f0] min-w-0 truncate">{w.signal}</p>
-                      <span className="shrink-0 font-mono font-bold text-emerald-400 w-8 text-right">{w.weight}</span>
-                    </div>
-                    {onEdit
-                      ? <input type="range" min={0} max={100} step={1} value={w.weight} onChange={e => updateW(i, +e.target.value)} className="w-full" />
-                      : <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(96,165,250,0.1)" }}>
-                          <div className="h-full rounded-full" style={{ width: `${w.weight}%`, background: "linear-gradient(90deg,#2563eb,#0ea5e9)" }} />
-                        </div>
-                    }
-                    <p className="text-[10px] text-[#2a3a5a] font-mono">{w.resume_field}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Red flag checks */}
-          {redFlags.length > 0 && (
-            <div className="space-y-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-[#3a5080]">
-                Red Flag Checks <span className="font-normal">(deprioritise if present)</span>
-              </p>
-              <div className="space-y-2">
-                {redFlags.map((f: any, i: number) => (
-                  <div key={i} className="nh-inset flex items-start gap-3 px-4 py-3"
-                    style={{ borderColor: "rgba(245,158,11,0.15)" }}>
-                    <AlertTriangle size={13} className="text-amber-400 shrink-0 mt-0.5" />
-                    <div className="min-w-0 space-y-0.5">
-                      <p className="text-[#c8d8f0] text-xs leading-relaxed">{f.check}</p>
-                      <p className="text-[#3a5080] text-[10px]">Field: <span className="font-mono">{f.resume_field}</span></p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── FullEvalProgress ──────────────────────────────────────────────── */
-function FullEvalProgress({ session }: { session: Session }) {
-  const p       = session.full_eval_progress ?? { status: "queued" as const };
-  const scored  = p.scored ?? 0;
-  const total   = p.total  ?? 0;
-  const pct     = total > 0 ? Math.round((scored / total) * 100) : 0;
-  const isErr   = p.status === "error";
-
-  const [tipI, setTipI] = useState(0);
-  useEffect(() => { const t = setInterval(() => setTipI(n => (n + 1) % EVAL_TIPS.length), 4000); return () => clearInterval(t); }, []);
-
-  return (
-    <div className="nh-card p-8 space-y-7">
-      {isErr ? (
-        <>
-          <PageHeader icon={<AlertTriangle size={16} />} title="Evaluation Failed" sub="The background worker encountered an error. Re-click Accept to retry from the last checkpoint." />
-          <p className="text-red-400 text-sm">{p.error || "Re-click Accept to resume from the last checkpoint."}</p>
-        </>
-      ) : (
-        <>
-          <PageHeader
-            icon={<Zap size={16} />}
-            title={p.status === "queued" ? "Preparing Full Evaluation" : "Scoring All Candidates"}
-            sub="Each candidate is evaluated against your final rubric in parallel. Results are saved progressively."
-          />
-
-          {/* Progress */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-[#6c80a8]">{scored} of {total} candidates</span>
-              <span className="font-mono font-black text-blue-400">{pct}%</span>
-            </div>
-            <div className="w-full h-2.5 rounded-full overflow-hidden" style={{ background: "rgba(96,165,250,0.1)" }}>
-              <div className="h-full rounded-full nh-progress-bar"
-                style={{ width: `${pct || (p.status !== "queued" ? 2 : 0)}%` }} />
-            </div>
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/25">
+      <button className="absolute inset-0 cursor-default" aria-label="Close resume preview" onClick={onClose} />
+      <aside className="relative flex h-full w-full max-w-6xl flex-col overflow-hidden border-l border-[#ded8cc] bg-[#f9f7f1] shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-[#ded8cc] px-4 py-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase tracking-[.18em] text-[#9b6a2f]">Resume workspace</p>
+            <h3 className="mt-1 truncate text-base font-black">{candidateName}</h3>
+            <p className="truncate text-xs text-[#777064]">{fileName}</p>
           </div>
-
-          {/* Tip */}
-          <div className="nh-inset p-4 flex items-start gap-3">
-            <Info size={13} className="text-blue-400 shrink-0 mt-0.5" />
-            <p className="text-[#6c80a8] text-xs leading-relaxed">{EVAL_TIPS[tipI]}</p>
-          </div>
-
-          {p.status !== "queued" && <BounceMsg msgs={["Analysing candidates…", "Applying rubric criteria…", "Scoring field by field…"]} />}
-        </>
-      )}
-    </div>
-  );
-}
-
-/* ── RubricAuditPanel ──────────────────────────────────────────────── */
-function RubricAuditPanel({ config }: { config: any }) {
-  const [open, setOpen] = useState(false);
-  if (!config) return null;
-  const r     = config.scoring_rubric ?? {};
-  const bc    = r.baseline_checks ?? [];
-  const pw    = r.p0_weights ?? [];
-  const rf    = r.red_flag_checks ?? [];
-  const hard  = bc.filter((c: any) => c?.reject_if_missing !== false).length;
-  const soft  = bc.length - hard;
-
-  return (
-    <div className="nh-card overflow-hidden">
-      <button onClick={() => setOpen(v => !v)} className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-white/[.015] transition-all">
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-semibold text-[#c8d8f0]">Rubric Audit</span>
-          <span className="text-[#4a6080] text-xs">{hard} hard · {soft} soft · {pw.length} P0 · {rf.length} flags</span>
+          <button onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#ded8cc] bg-white text-[#151411] hover:border-[#151411]">
+            <X size={15} />
+          </button>
         </div>
-        {open ? <ChevronUp size={14} className="text-[#3a5080]" /> : <ChevronDown size={14} className="text-[#3a5080]" />}
-      </button>
-      {open && (
-        <div className="px-6 py-6 border-t space-y-5 text-xs" style={{ borderColor: "rgba(96,165,250,0.08)" }}>
-          {[{ title: "Baseline Checks", items: bc, render: (c: any) => (
-            <div className="flex gap-2 mb-2" key={c?.check}>
-              <span className={`px-1.5 py-0.5 rounded text-[10px] shrink-0 ${
-                c?.reject_if_missing !== false ? "bg-red-500/[.08] text-red-300 border border-red-500/20" : "bg-blue-500/[.08] text-blue-300 border border-blue-500/20"
-              }`}>{c?.reject_if_missing !== false ? "HARD" : "soft"}</span>
-              <span className="text-[#8899b8] leading-relaxed">{c?.check}</span>
-            </div>
-          )}, { title: "P0 Weights", items: pw, render: (w: any) => (
-            <div className="flex gap-2 mb-1.5" key={w?.signal}>
-              <span className="text-[10px] text-emerald-300 border border-emerald-500/20 bg-emerald-500/[.06] px-1.5 py-0.5 rounded font-mono shrink-0">{w?.weight ?? 0}</span>
-              <span className="text-[#8899b8]">{w?.signal}</span>
-            </div>
-          )}].map(({ title, items, render }) => (
-            <div key={title}>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-[#3a5080] mb-2">{title}</p>
-              {items.length === 0 ? <p className="text-[#2a3a5a] italic">none</p> : items.map(render)}
-            </div>
-          ))}
-          {rf.length > 0 && (
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-[#3a5080] mb-2">Red Flags</p>
-              {rf.map((f: any, i: number) => <p key={i} className="text-amber-300/80 mb-1">• {f?.check}</p>)}
-            </div>
-          )}
-          {config.final_evaluation_prompt && (
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-[#3a5080] mb-2">Final Evaluation Prompt</p>
-              <pre className="nh-inset p-4 whitespace-pre-wrap break-words text-[11px] text-[#6c80a8] leading-relaxed max-h-80 overflow-y-auto">
-                {config.final_evaluation_prompt}
-              </pre>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── SkippedPanel ──────────────────────────────────────────────────── */
-function SkippedPanel({ skipped }: { skipped: SkippedInfo }) {
-  const [open, setOpen] = useState(false);
-  const unreadable   = skipped.unreadable    ?? [];
-  const sampledOut   = skipped.sampled_out   ?? [];
-  const modelDropped = skipped.model_dropped ?? [];
-  const total = unreadable.length + sampledOut.length + modelDropped.length;
-  if (!total) return null;
-
-  return (
-    <div className="nh-card overflow-hidden">
-      <button onClick={() => setOpen(v => !v)} className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-white/[.015] transition-all">
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-semibold text-[#c8d8f0]">Resumes Not Evaluated</span>
-          <span className="nh-inset px-2.5 py-1 text-[10px] font-mono text-[#6c80a8]">{total} skipped</span>
-        </div>
-        {open ? <ChevronUp size={14} className="text-[#3a5080]" /> : <ChevronDown size={14} className="text-[#3a5080]" />}
-      </button>
-      {open && (
-        <div className="px-6 py-6 border-t space-y-5" style={{ borderColor: "rgba(96,165,250,0.08)" }}>
-          <p className="text-[#4a6080] text-xs leading-relaxed">
-            Fix unreadable PDFs by re-uploading text-based PDFs. Model-dropped resumes can be retried.
-          </p>
-          {[
-            { arr: unreadable,   icon: "—", c: "text-red-400",    bg: "rgba(239,68,68,0.05)",   bc: "rgba(239,68,68,0.18)",   t: "Unreadable PDFs" },
-            { arr: modelDropped, icon: "?", c: "text-amber-400", bg: "rgba(245,158,11,0.05)", bc: "rgba(245,158,11,0.18)", t: "Dropped by Model"  },
-            { arr: sampledOut, icon: "–",  c: "text-[#6c80a8]", bg: "rgba(30,60,120,0.1)",   bc: "rgba(96,165,250,0.1)", t: "Over Cap"            },
-          ].filter(x => x.arr.length > 0).map(({ arr, icon, c, bg, bc, t }) => (
-            <div key={t} className="space-y-2">
-              <p className={`text-[10px] font-semibold uppercase tracking-wider ${c}`}>{t}</p>
-              <div className="space-y-2">
-                {arr.map((r, i) => (
-                  <div key={i} className="nh-inset flex items-start gap-3 px-4 py-3"
-                    style={{ background: bg, borderColor: bc }}>
-                    <span className={`${c} shrink-0 mt-0.5`}>{icon}</span>
-                    <div className="min-w-0">
-                      <p className="text-[#c8d8f0] text-xs font-mono truncate">{r.file_name}</p>
-                      <p className="text-[#4a6080] text-xs mt-0.5">{r.reason}</p>
-                    </div>
+        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_360px]">
+          <iframe title={`${candidateName} resume PDF`} src={pdfUrl} className="h-full min-h-[65vh] w-full bg-white lg:min-h-0" />
+          <aside className="overflow-y-auto border-t border-[#ded8cc] bg-[#fffdf8] p-4 lg:border-l lg:border-t-0">
+            <section className="overflow-hidden rounded-2xl border border-[#ded8cc] bg-[#fffdf8] shadow-sm">
+              <div className="border-b border-[#e5dccb] bg-[#fbf4df] px-4 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-black uppercase tracking-[.16em] text-[#9b6a2f]">Private note</p>
+                    <h4 className="mt-1 truncate text-base font-black text-[#151411]">Selection rationale</h4>
                   </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── TokenPanel ────────────────────────────────────────────────────── */
-function TokenPanel({ totals }: { totals: Record<string, any> }) {
-  if (!totals || !Object.keys(totals).length) return null;
-  const totalTok = totals._total_tokens || 0;
-  const entries  = Object.entries(totals).filter(([k]) => k !== "_total_tokens");
-
-  return (
-    <details className="group">
-      <summary className="text-xs font-semibold text-[#3a5080] uppercase tracking-wider cursor-pointer hover:text-[#6c80a8] list-none flex items-center gap-2 select-none">
-        <span className="group-open:rotate-90 transition-transform inline-block">▸</span> Token Usage
-      </summary>
-      <div className="mt-4 nh-card p-6 space-y-5">
-        <div className="grid grid-cols-2 gap-4 pb-4 border-b" style={{ borderColor: "rgba(96,165,250,0.08)" }}>
-          <div>
-            <p className="text-[10px] text-[#3a5080] uppercase tracking-wider mb-1">Total Tokens</p>
-            <p className="text-2xl text-emerald-400 font-black font-mono">{totalTok.toLocaleString()}</p>
-          </div>
-          <div>
-            <p className="text-[10px] text-[#3a5080] uppercase tracking-wider mb-1">API Calls</p>
-            <p className="text-2xl text-[#c8d8f0] font-black font-mono">{entries.length}</p>
-          </div>
-        </div>
-        <div className="space-y-2">
-          {entries.map(([name, data]) => {
-            const row = data as any;
-            return (
-              <div key={name} className="nh-inset flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3">
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-medium text-[#c8d8f0]">{name}</span>
-                  {row.latency_seconds && (
-                    <span className="nh-inset px-2 py-0.5 text-[10px] font-mono text-[#6c80a8]">{row.latency_seconds}s</span>
-                  )}
+                  <span className="shrink-0 rounded-full border border-[#d8c59f] bg-[#fffaf0] px-2 py-0.5 text-[10px] font-black text-[#7a5524]">Private</span>
                 </div>
-                <div className="flex items-center gap-6 text-[11px] font-mono">
-                  {[["In", row.input_tokens, "#6c80a8"], ["Out", row.output_tokens, "#6c80a8"], ["Total", row.total_tokens, "#93c5fd"]].map(([l, v, c]) => (
-                    <div key={String(l)} className="flex flex-col items-end">
-                      <span className="text-[#2a3a5a] text-[9px] uppercase mb-0.5">{l}</span>
-                      <span style={{ color: String(c) }}>{Number(v)?.toLocaleString() || 0}</span>
-                    </div>
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-[#777064]">
+                  <OneLine text={`Candidate: ${candidateName}`} className="max-w-[210px]" />
+                  <span className="font-semibold">{noteSavedAt ? `Saved ${noteSavedAt}` : "Not saved yet"}</span>
+                </div>
+              </div>
+              <div className="p-4">
+                <textarea
+                  value={privateNote}
+                  onChange={(e) => savePrivateNote(e.target.value)}
+                  rows={12}
+                  placeholder={"Decision note\nWhy select:\nEvidence to verify:\nConcern:"}
+                  className="private-note-pad min-h-[280px] w-full resize-none rounded-xl border border-[#e0d2b6] px-4 py-3 text-sm leading-7 text-[#2c2924] outline-none placeholder:text-[#b09b74] focus:border-[#9b6a2f]"
+                />
+                <div className="mt-3 grid grid-cols-1 gap-2">
+                  {[
+                    "Why select: ",
+                    "Evidence to verify: ",
+                    "Concern: ",
+                    "Hiring manager summary: ",
+                  ].map((template) => (
+                    <button
+                      key={template}
+                      onClick={() => appendPrivateNote(template)}
+                      className="rounded-lg border border-[#ded8cc] bg-white px-3 py-2 text-left text-xs font-semibold text-[#4d473d] hover:border-[#9b6a2f]"
+                    >
+                      {template.replace(": ", "")}
+                    </button>
                   ))}
                 </div>
+                <p className="mt-3 text-xs leading-5 text-[#777064]">Stored locally for this resume. Use it for private screening rationale before sharing a shortlist.</p>
               </div>
-            );
-          })}
+            </section>
+
+            <section className="mt-4 rounded-2xl border border-[#ebe5d9] bg-white p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-black">Referral check</p>
+                  <OneLine text="Quick scan for referral markers in parsed resume data." className="mt-1 text-xs text-[#777064]" />
+                </div>
+                <button
+                  onClick={() => setReferralOpen((value) => !value)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#ded8cc] bg-[#fffdf8] px-2.5 py-1.5 text-xs font-bold text-[#151411] hover:border-[#151411]"
+                >
+                  <Search size={13} />
+                  Check
+                </button>
+              </div>
+              <div className="mt-3 rounded-xl border px-3 py-3" style={{ color: referral.found ? "#027a48" : "#b54708", background: referral.found ? "#ecfdf3" : "#fffaeb", borderColor: referral.found ? "#abefc6" : "#fedf89" }}>
+                <p className="text-xs font-black">{referral.label}</p>
+                <OneLine text={referral.detail} className="mt-1 text-xs" />
+              </div>
+              {referralOpen && (
+                <div className="mt-3 rounded-xl border border-[#ebe5d9] bg-[#fffdf8] p-3">
+                  <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#9b6a2f]">How to use this</p>
+                  <OneLine text="Assistive check only. Confirm referrals from ATS metadata, employee email, or recruiter-entered source." className="mt-1 text-xs text-[#645d52]" />
+                </div>
+              )}
+            </section>
+          </aside>
         </div>
+      </aside>
+    </div>
+  );
+}
+
+function EvidenceRow({ item }: { item: CandidateResult["field_matches"][number] }) {
+  const tone = matchTone(item.match);
+  const field = evidenceFieldLabel(item.field);
+  const requirement = evidenceCriterion(item.criteria_checked);
+  const resumeSignal = evidenceResumeSignal(item.value_from_resume);
+  const decision = evidenceDecisionNote(item.note, item.match);
+  const line = `${requirement}: ${decision}; ${resumeSignal}.`;
+  return (
+    <article className="grid min-w-0 grid-cols-[74px_62px_minmax(0,1fr)] items-center gap-2 rounded-xl border bg-[#fffdf8] px-3 py-2 sm:grid-cols-[88px_72px_minmax(0,1fr)]" style={{ borderColor: tone.border }}>
+      <OneLine text={field} className="text-[11px] font-black uppercase tracking-[.1em] text-[#9b6a2f]" />
+      <span className="rounded-full border px-2 py-0.5 text-center text-[10px] font-black" style={{ color: tone.color, background: tone.bg, borderColor: tone.border }}>{tone.label}</span>
+      <OneLine text={line} className="text-sm font-medium text-[#4d473d]" />
+    </article>
+  );
+}
+
+function Score({ label, value }: { label: string; value?: number }) {
+  return (
+    <div className="rounded-xl border border-[#ded8cc] bg-white px-4 py-3">
+      <p className="text-2xl font-black leading-none">{pct(value)}</p>
+      <p className="mt-1 text-[10px] font-bold uppercase tracking-[.14em] text-[#9b6a2f]">{label}</p>
+    </div>
+  );
+}
+
+function rubricRoleLens(value?: string) {
+  const text = String(value || "").toLowerCase();
+  if (text.includes("shipped consumer internet products")) return "Consumer PM: launch, judgment, metrics.";
+  return compactText(String(value || ""), 88);
+}
+
+function rubricHardLabel(value?: string) {
+  const text = String(value || "");
+  const normalized = evidenceCriterion(text);
+  if (normalized === "1-1.5 yrs PM") return "PM tenure";
+  if (normalized === "Lifecycle") return "Lifecycle ownership";
+  if (normalized === "Customer/metrics") return "Customer metrics";
+  if (normalized === "Stakeholders") return "Stakeholder alignment";
+  return compactText(text.replaceAll("_", " "), 60);
+}
+
+function rubricP0Label(value?: string) {
+  const text = String(value || "").toLowerCase();
+  if (text.includes("clear inflection point")) return "Ownership trajectory";
+  if (text.includes("deep curiosity") || text.includes("understanding the 'why'")) return "Curiosity depth";
+  if (text.includes("data and analysis") || text.includes("product improvements")) return "Metrics-led iteration";
+  if (text.includes("product taste") || text.includes("design")) return "Product taste";
+  return compactText(String(value || "").replaceAll("_", " "), 62);
+}
+
+function rubricRiskLabel(value?: string) {
+  const text = String(value || "").toLowerCase();
+  if (text.includes("passive contribution") || text.includes("worked on") || text.includes("contributed to")) return "Passive ownership";
+  if (text.includes("non-consumer")) return "Non-consumer product evidence";
+  if (text.includes("academic")) return "Academic-only product proof";
+  return compactText(String(value || "").replaceAll("_", " "), 62);
+}
+
+function RubricPanel({ jd, rubric }: { jd: JdAnalysis; rubric: any }) {
+  const checks = rubric?.scoring_rubric?.baseline_checks || [];
+  const weights = rubric?.scoring_rubric?.p0_weights || [];
+  const red = rubric?.scoring_rubric?.red_flag_checks || jd.red_flags || [];
+  const hardChecks = (checks.length ? checks : jd.baseline_signals || []).slice(0, 5).map((item: any) => ({
+    text: rubricHardLabel(item.check || item),
+    meta: "must-have",
+  }));
+  const p0Signals = (weights.length ? weights : jd.p0_signals || []).slice(0, 5).map((item: any) => ({
+    text: rubricP0Label(item.signal || item),
+    meta: item.weight ? `${item.weight} pts` : "P0 signal",
+  }));
+  const redFlags = (red || []).slice(0, 4).map((item: any) => ({
+    text: rubricRiskLabel(item.check || item.flag || item),
+    meta: "risk",
+  }));
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-3 gap-2">
+        <RubricMetric label="Hard" value={hardChecks.length} tone={matchTone("fail")} />
+        <RubricMetric label="P0" value={p0Signals.length} tone={matchTone("pass")} />
+        <RubricMetric label="Risk" value={redFlags.length} tone={matchTone("partial")} />
       </div>
-    </details>
+      {jd.one_liner && (
+        <div className="rounded-xl border border-[#ebe5d9] bg-[#fffdf8] p-3">
+          <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#9b6a2f]">Role lens</p>
+          <OneLine text={rubricRoleLens(jd.one_liner)} className="mt-1 text-sm text-[#4d473d]" />
+        </div>
+      )}
+      <RubricList title="Hard filters" items={hardChecks} icon={CheckCircle2} tone={matchTone("fail")} />
+      <RubricList title="P0 signals" items={p0Signals} icon={Star} tone={matchTone("pass")} />
+      <RubricList title="Red flags" items={redFlags} icon={ShieldAlert} tone={matchTone("partial")} />
+    </div>
+  );
+}
+
+function RubricMetric({ label, value, tone }: { label: string; value: number; tone: { color: string; bg: string; border: string } }) {
+  return (
+    <div className="rounded-xl border p-3 text-center" style={{ background: tone.bg, borderColor: tone.border }}>
+      <p className="text-xl font-black leading-none" style={{ color: tone.color }}>{value}</p>
+      <p className="mt-1 text-[10px] font-black uppercase tracking-[.12em]" style={{ color: tone.color }}>{label}</p>
+    </div>
+  );
+}
+
+function RubricList({ title, items, icon: Icon, tone }: {
+  title: string;
+  items: Array<{ text: string; meta: string }>;
+  icon: any;
+  tone: { color: string; bg: string; border: string };
+}) {
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[.16em] text-[#9b6a2f]"><Icon size={13} /> {title}</div>
+        <span className="rounded-full border px-2 py-0.5 text-[10px] font-black" style={{ color: tone.color, background: tone.bg, borderColor: tone.border }}>{items.length}</span>
+      </div>
+      <div className="space-y-2">
+        {items.length === 0 ? <p className="text-sm text-[#777064]">Waiting for rubric.</p> : items.map((item, index) => (
+          <div key={`${item.text}-${index}`} className="grid min-w-0 grid-cols-[minmax(0,1fr)_88px] items-center gap-2 rounded-lg border border-[#ebe5d9] bg-[#fffdf8] px-3 py-2">
+            <OneLine text={compactText(item.text, 105)} className="text-sm font-medium text-[#2c2924]" />
+            <span className="truncate rounded-full border border-[#ded8cc] bg-white px-2 py-0.5 text-center text-[10px] font-bold uppercase tracking-[.08em] text-[#9b6a2f]" title={item.meta}>{item.meta}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="mt-3 flex items-center justify-between gap-3 border-t border-[#ebe5d9] pt-3 first:mt-0 first:border-t-0 first:pt-0">
+      <span className="text-xs text-[#777064]">{label}</span>
+      <span className="text-right text-xs font-black text-[#151411]">{value}</span>
+    </div>
+  );
+}
+
+function RunningPanel({ session }: { session: Session }) {
+  const progress = session.full_eval_progress;
+  const scored = progress?.scored || 0;
+  const total = progress?.total || 0;
+  const width = total ? Math.round((scored / total) * 100) : 12;
+  return (
+    <div className="grid min-h-[460px] place-items-center rounded-2xl border border-[#ebe5d9] bg-[#fffdf8] p-8 text-center">
+      <div className="w-full max-w-md">
+        <Loader2 className="mx-auto animate-spin text-[#151411]" size={34} />
+        <h3 className="mt-5 text-xl font-black">Final shortlist is running</h3>
+        <p className="mt-2 text-sm leading-6 text-[#777064]">The backend is scoring every parsed resume against the calibrated rubric.</p>
+        <div className="mt-6 h-3 overflow-hidden rounded-full bg-[#e9e1d4]"><div className="h-full rounded-full bg-[#151411]" style={{ width: `${width}%` }} /></div>
+        <p className="mt-2 text-xs font-semibold text-[#777064]">{scored || "--"} of {total || "--"} candidates scored</p>
+      </div>
+    </div>
   );
 }

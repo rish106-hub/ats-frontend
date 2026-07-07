@@ -69,6 +69,7 @@ export interface P0Match {
 
 export interface CandidateResult {
   candidate_name: string;
+  file_name?: string;
   field_matches: FieldMatch[];
   baseline_pass: boolean;
   baseline_failures: string[];
@@ -292,4 +293,3 @@ export const api = {
   deleteSession: (id: string) =>
     req<{ ok: boolean }>(`/api/sessions/${id}`, { method: "DELETE" }),
 };
-
