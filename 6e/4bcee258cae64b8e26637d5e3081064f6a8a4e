@@ -1,0 +1,29 @@
+lib/api.ts
+  s_4e190b306673f2::t_db41daf6e63fc1 122
+  s_4e190b306673f2::t_1081a987ee5cbb 177
+  s_4e190b306673f2::t_eac721f9b7ca80 236,240
+app/sessions/[id]/page.tsx
+  s_4e190b306673f2::t_db41daf6e63fc1 11,171-173,214,262-264,266-276,304-306,308,310-312
+  s_4e190b306673f2::t_1ff93b57133dad 215-219,606-608
+  s_4e190b306673f2::t_7b6465610d0aee 265
+  s_4e190b306673f2::t_eac721f9b7ca80 309
+  s_4e190b306673f2::t_e9049e593e5d89 522-539,544-563,566-569,574-605
+  s_4e190b306673f2::t_c58e27cc471e68 981-983,1013-1019,1021,1045
+  s_4e190b306673f2::t_594f98178d1e85 277-303
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "6e4bcee258cae64b8e26637d5e3081064f6a8a4e",
+  "prompts": {},
+  "sessions": {
+    "s_4e190b306673f2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3b09-78a4-7c30-9ff0-e36802711696",
+        "model": "gpt-5.5"
+      },
+      "human_author": "RISHAV DEWAN <rishavdewan10@gmail.com>"
+    }
+  }
+}
