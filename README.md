@@ -78,7 +78,8 @@ npm install
 
 # 3. Configure environment
 cp .env.example .env.local
-# Edit .env.local and set NEXT_PUBLIC_API_URL if needed
+# Edit .env.local and set NEXT_PUBLIC_API_URL, NEXT_PUBLIC_SUPABASE_URL,
+# and NEXT_PUBLIC_SUPABASE_ANON_KEY
 
 # 4. Start the dev server
 npm run dev

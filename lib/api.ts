@@ -176,6 +176,14 @@ export interface OnboardingProfile extends OnboardingProfileInput {
   updated_at: string;
 }
 
+export interface InterestInput {
+  email: string;
+  company_name: string;
+  role: string;
+  source: string;
+  metadata_json?: Record<string, unknown>;
+}
+
 export interface LessonLearned {
   candidate?: string;
   action?: string;
@@ -240,7 +248,10 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new Error(msg);
   }
-  return res.json() as Promise<T>;
+  if (res.status === 204) return undefined as T;
+  const text = await res.text();
+  if (!text) return undefined as T;
+  return JSON.parse(text) as T;
 }
 
 export const api = {
@@ -253,6 +264,12 @@ export const api = {
     req<OnboardingProfile>("/api/onboarding/profile", {
       method: "POST",
       body: JSON.stringify(profile),
+    }),
+
+  saveInterest: (interest: InterestInput) =>
+    req<unknown>("/api/public/interest", {
+      method: "POST",
+      body: JSON.stringify(interest),
     }),
 
   listSessions: () => req<Session[]>("/api/sessions"),

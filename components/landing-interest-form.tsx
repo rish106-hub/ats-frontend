@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { ArrowRight, Loader2 } from "lucide-react";
-import { BASE } from "@/lib/api";
+import { api } from "@/lib/api";
 
 export function LandingInterestForm() {
   const [email, setEmail] = useState("");
@@ -18,18 +18,13 @@ export function LandingInterestForm() {
     setStatus("");
     setError("");
     try {
-      const response = await fetch(`${BASE}/api/public/interest`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email,
-          company_name: company,
-          role,
-          source: "mieru_portal_landing",
-          metadata_json: { page: "portal_root" },
-        }),
+      await api.saveInterest({
+        email,
+        company_name: company,
+        role,
+        source: "mieru_portal_landing",
+        metadata_json: { page: "portal_root" },
       });
-      if (!response.ok) throw new Error("Could not save interest. Please use signup instead.");
       setStatus("Interest saved. You can continue to signup whenever you are ready.");
       setEmail("");
       setCompany("");

@@ -107,8 +107,9 @@ function statusFor(session: Session) {
 
 function candidatesNeedingWork(session: Session) {
   if (session.status === "created") return "JD missing";
-  if (["jd_analyzed", "rubric_ready"].includes(session.status)) return "Resume batch missing";
+  if (session.status === "jd_analyzed") return "Resume batch missing";
   if (session.status === "resumes_uploaded") return "Calibration not started";
+  if (session.status === "rubric_ready") return "Review candidates";
   if (session.status === "preview_active") return "Recruiter review needed";
   if (session.status === "running_full_eval") return "Final run in progress";
   return "Shortlist ready";

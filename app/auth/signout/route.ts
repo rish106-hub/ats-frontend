@@ -4,7 +4,12 @@ import { createClient } from "@/lib/supabase/server";
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
-  await supabase.auth.signOut();
+  const { error } = await supabase.auth.signOut();
+  if (error) {
+    console.error("Supabase sign out failed", error);
+    return NextResponse.redirect(new URL("/app?error=signout_failed", request.url), { status: 302 });
+  }
+
   revalidatePath("/", "layout");
   return NextResponse.redirect(new URL("/login", request.url), { status: 302 });
 }

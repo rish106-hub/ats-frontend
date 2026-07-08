@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Loader2, ShieldCheck } from "lucide-react";
 import { MieruLogo } from "@/components/mieru-logo";
+import { safeLocalRedirectPath } from "@/lib/redirect";
 import { createClient } from "@/lib/supabase/client";
 import { getSupabaseConfig, supabaseNotConfiguredMessage } from "@/lib/supabase/config";
 
@@ -13,7 +14,7 @@ type Mode = "login" | "signup";
 export function AuthPanel({ mode }: { mode: Mode }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get("next") || "/app";
+  const next = safeLocalRedirectPath(searchParams.get("next"), "/app");
   const supabaseConfig = getSupabaseConfig();
   const supabaseReady = supabaseConfig.configured;
   const [email, setEmail] = useState("");
