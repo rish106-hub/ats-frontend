@@ -127,7 +127,7 @@ export function AuthPanel({ mode }: { mode: Mode }) {
                     <input
                       value={fullName}
                       onChange={(event) => setFullName(event.target.value)}
-                      className="mt-1 h-10 w-full rounded-lg border border-[#d8d1c3] bg-[#fbfaf7] px-3 text-sm outline-none focus:border-[#151411]"
+                      className="mt-1 min-h-10 w-full rounded-lg border border-[#d8d1c3] bg-[#fbfaf7] px-3 py-2 text-sm leading-5 outline-none focus:border-[#151411]"
                       placeholder="Recruiter name"
                     />
                   </label>
@@ -136,7 +136,7 @@ export function AuthPanel({ mode }: { mode: Mode }) {
                     <input
                       value={company}
                       onChange={(event) => setCompany(event.target.value)}
-                      className="mt-1 h-10 w-full rounded-lg border border-[#d8d1c3] bg-[#fbfaf7] px-3 text-sm outline-none focus:border-[#151411]"
+                      className="mt-1 min-h-10 w-full rounded-lg border border-[#d8d1c3] bg-[#fbfaf7] px-3 py-2 text-sm leading-5 outline-none focus:border-[#151411]"
                       placeholder="Company name"
                     />
                   </label>
@@ -149,7 +149,7 @@ export function AuthPanel({ mode }: { mode: Mode }) {
                   required
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
-                  className="mt-1 h-10 w-full rounded-lg border border-[#d8d1c3] bg-[#fbfaf7] px-3 text-sm outline-none focus:border-[#151411]"
+                  className="mt-1 min-h-10 w-full rounded-lg border border-[#d8d1c3] bg-[#fbfaf7] px-3 py-2 text-sm leading-5 outline-none focus:border-[#151411]"
                   placeholder="name@company.com"
                 />
               </label>
@@ -161,7 +161,7 @@ export function AuthPanel({ mode }: { mode: Mode }) {
                   minLength={8}
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
-                  className="mt-1 h-10 w-full rounded-lg border border-[#d8d1c3] bg-[#fbfaf7] px-3 text-sm outline-none focus:border-[#151411]"
+                  className="mt-1 min-h-10 w-full rounded-lg border border-[#d8d1c3] bg-[#fbfaf7] px-3 py-2 text-sm leading-5 outline-none focus:border-[#151411]"
                   placeholder="Minimum 8 characters"
                 />
               </label>
@@ -172,7 +172,7 @@ export function AuthPanel({ mode }: { mode: Mode }) {
               <button
                 type="submit"
                 disabled={loading || !supabaseReady}
-                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#151411] px-4 text-sm font-black text-white transition hover:bg-[#2a2823] disabled:opacity-60"
+                className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#151411] px-4 py-2 text-sm font-black leading-5 text-white transition hover:bg-[#2a2823] disabled:opacity-60"
               >
                 {loading ? <Loader2 size={15} className="animate-spin" /> : null}
                 {isSignup ? "Create account" : "Log in"}

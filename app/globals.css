@@ -473,18 +473,11 @@
 
   .mi-button-shine {
     position: relative;
-    overflow: hidden;
-    isolation: isolate;
+    overflow: visible;
   }
 
   .mi-button-shine::after {
-    content: "";
-    position: absolute;
-    inset: -20% auto -20% 0;
-    width: 44%;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.42), transparent);
-    animation: mi-shine 3.8s ease-in-out infinite;
-    z-index: -1;
+    content: none;
   }
 
   .mi-report-shell {
@@ -1006,4 +999,3 @@ input[type="range"] {
   box-shadow: 0 0 10px rgba(79,110,247,0.55);
   cursor: pointer;
 }
-

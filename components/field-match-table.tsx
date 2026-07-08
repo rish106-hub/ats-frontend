@@ -80,13 +80,13 @@ function FieldMatchRow({ fm }: { fm: { field: unknown; value_from_resume: unknow
   const note = toStr(fm.note);
 
   return (
-    <div className={`border-l-2 ${m.border} rounded-r-lg overflow-hidden`} style={{ background: m.bg }}>
+    <div className={`border-l-2 ${m.border} rounded-r-lg`} style={{ background: m.bg }}>
       <button
         onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center justify-between px-3 py-2 text-left transition-colors gap-2"
+        className="flex w-full items-start justify-between gap-2 px-3 py-2 text-left transition-colors"
         style={{ background: "transparent" }}
       >
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-start">
           <span className="text-[10px] font-mono font-semibold uppercase tracking-wider text-[#c8d8f0] px-2 py-0.5 rounded shrink-0"
             style={{ background: "rgba(96,165,250,0.08)", border: "1px solid rgba(96,165,250,0.15)" }}>
             {field}
@@ -95,8 +95,8 @@ function FieldMatchRow({ fm }: { fm: { field: unknown; value_from_resume: unknow
             {mIcon} {m.label}
           </span>
           {!open && criteriaChecked && (
-            <span className="text-[11px] text-[#4a6080] truncate min-w-0">
-              {truncate(criteriaChecked, 60)}
+            <span className="min-w-0 break-words text-[11px] leading-5 text-[#4a6080]">
+              {criteriaChecked}
             </span>
           )}
         </div>
@@ -106,20 +106,20 @@ function FieldMatchRow({ fm }: { fm: { field: unknown; value_from_resume: unknow
       {open && (
         <div className="px-3 pb-3 space-y-2">
           {criteriaChecked && (
-            <div className="flex gap-2">
-              <span className="text-[10px] text-[#3a5080] font-semibold uppercase tracking-wide shrink-0 pt-0.5 w-20">Criteria</span>
+            <div className="grid gap-1 sm:grid-cols-[80px_minmax(0,1fr)] sm:gap-2">
+              <span className="text-[10px] text-[#3a5080] font-semibold uppercase tracking-wide pt-0.5">Criteria</span>
               <p className="text-xs text-[#c8d8f0] leading-relaxed"><ExpandableText text={criteriaChecked} maxLen={200} /></p>
             </div>
           )}
           {valueFromResume && (
-            <div className="flex gap-2">
-              <span className="text-[10px] text-[#3a5080] font-semibold uppercase tracking-wide shrink-0 pt-0.5 w-20">Resume</span>
+            <div className="grid gap-1 sm:grid-cols-[80px_minmax(0,1fr)] sm:gap-2">
+              <span className="text-[10px] text-[#3a5080] font-semibold uppercase tracking-wide pt-0.5">Resume</span>
               <p className="text-xs text-[#a8b8d8] leading-relaxed"><ExpandableText text={valueFromResume} maxLen={200} /></p>
             </div>
           )}
           {note && (
-            <div className="flex gap-2">
-              <span className="text-[10px] text-[#3a5080] font-semibold uppercase tracking-wide shrink-0 pt-0.5 w-20">Note</span>
+            <div className="grid gap-1 sm:grid-cols-[80px_minmax(0,1fr)] sm:gap-2">
+              <span className="text-[10px] text-[#3a5080] font-semibold uppercase tracking-wide pt-0.5">Note</span>
               <p className={`text-xs leading-relaxed italic ${m.cls} opacity-80`}><ExpandableText text={note} maxLen={200} /></p>
             </div>
           )}
@@ -191,7 +191,7 @@ function CandidateCard({ c, rank, onFeedback, onViewResume }: {
 
   return (
     <div
-      className={`nh-card border overflow-hidden transition-all ${cardBorder}`}
+      className={`nh-card border transition-all ${cardBorder}`}
       style={{ borderLeft: cardLeftAccent }}
     >
       {/* Card header */}
@@ -203,7 +203,7 @@ function CandidateCard({ c, rank, onFeedback, onViewResume }: {
         <div className="flex items-center gap-2 min-w-0 flex-wrap">
           <span className="text-[10px] font-mono text-[#2a3a5a] shrink-0">#{rank}</span>
 
-          <span className="font-semibold text-sm text-white truncate">{c.candidate_name || "Unknown"}</span>
+          <span className="min-w-0 break-words text-sm font-semibold leading-5 text-white">{c.candidate_name || "Unknown"}</span>
 
           <span className={`flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full font-semibold shrink-0 ${clsCfg.bg}`}>
             <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${clsCfg.dot}`} />
@@ -228,7 +228,7 @@ function CandidateCard({ c, rank, onFeedback, onViewResume }: {
           {onViewResume && (
             <button
               onClick={(e) => { e.stopPropagation(); onViewResume(c); }}
-              className="flex items-center gap-1 text-[10px] font-semibold text-[#6c80a8] hover:text-blue-300 px-2 py-0.5 rounded transition-all shrink-0"
+              className="flex min-h-7 items-center gap-1 rounded px-2 py-0.5 text-[10px] font-semibold leading-4 text-[#6c80a8] transition-all hover:text-blue-300"
               style={{ background: "rgba(96,165,250,0.06)", border: "1px solid rgba(96,165,250,0.15)" }}
             >
               <FileText size={10} /> Resume
@@ -238,7 +238,7 @@ function CandidateCard({ c, rank, onFeedback, onViewResume }: {
           {onFeedback && (
             <button
               onClick={(e) => { e.stopPropagation(); setFeedbackOpen(v => !v); }}
-              className={`text-[10px] font-semibold px-2 py-0.5 rounded border transition-all shrink-0 ${
+              className={`min-h-7 rounded border px-2 py-0.5 text-[10px] font-semibold leading-4 transition-all ${
                 feedbackSubmitted
                   ? "border-emerald-500/20 text-emerald-400"
                   : "text-[#6c80a8] hover:text-amber-300 border-white/[.08] hover:border-amber-500/20"
@@ -286,15 +286,15 @@ function CandidateCard({ c, rank, onFeedback, onViewResume }: {
                 value={feedbackReason}
                 onChange={(e) => setFeedbackReason(e.target.value)}
               />
-              <div className="flex gap-2 justify-end">
+              <div className="flex flex-wrap justify-end gap-2">
                 <button
-                  className="text-[10px] text-[#4a6080] hover:text-[#a8b8d8] px-3 py-1.5 transition-colors"
+                  className="min-h-8 px-3 py-1.5 text-[10px] text-[#4a6080] transition-colors hover:text-[#a8b8d8]"
                   onClick={(e) => { e.stopPropagation(); setFeedbackOpen(false); }}
                 >
                   Cancel
                 </button>
                 <button
-                  className="nh-btn-primary flex items-center gap-1.5 text-[10px] font-semibold px-3 py-1.5 disabled:opacity-50"
+                  className="nh-btn-primary flex min-h-8 items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold disabled:opacity-50"
                   disabled={!feedbackReason.trim()}
                   onClick={handleSubmitFeedback}
                 >
@@ -442,7 +442,7 @@ export function FieldMatchTable({
       <div className="space-y-4">
 
         {/* Summary stats */}
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
             { label: "Total",    value: summary.total_evaluated, color: "text-white",       accent: "rgba(79,110,247,0.5)"  },
             { label: "P0",       value: summary.p0_count,        color: "text-emerald-400", accent: "rgba(16,185,129,0.5)"  },

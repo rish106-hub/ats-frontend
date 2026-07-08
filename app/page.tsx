@@ -116,10 +116,10 @@ export default function LandingPage() {
             <a href="#workflow" className="hover:text-white">Workflow</a>
           </div>
           <div className="flex items-center gap-2">
-            <Link href="/login" className="hidden rounded-full border border-white/20 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10 sm:inline-flex">
+            <Link href="/login" className="hidden min-h-11 items-center rounded-full border border-white/20 px-4 py-2 text-sm font-bold leading-5 text-white transition hover:bg-white/10 sm:inline-flex">
               Log in
             </Link>
-            <Link href="/signup" className="inline-flex items-center gap-2 rounded-full bg-[#fff7e8] px-4 py-2 text-sm font-black text-[#24140f] transition hover:bg-white">
+            <Link href="/signup" className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#fff7e8] px-4 py-2 text-sm font-black leading-5 text-[#24140f] transition hover:bg-white">
               Start workspace <ArrowRight size={15} />
             </Link>
           </div>
@@ -130,17 +130,17 @@ export default function LandingPage() {
             <p className="mi-reveal inline-flex rounded-full border border-[#ffcc7a]/30 bg-[#3a1c10]/70 px-3 py-1 text-xs font-black uppercase text-[#ffcc7a]">
               Built for 250-resume hiring loops
             </p>
-            <h1 className="mi-reveal mi-delay-1 mt-5 max-w-3xl text-5xl font-black leading-[0.94] sm:text-6xl lg:text-7xl">
+            <h1 className="mi-reveal mi-delay-1 mt-5 max-w-3xl text-5xl font-black leading-[1.02] sm:text-6xl lg:text-7xl">
               Never shortlist blind again. Mieru shows the proof.
             </h1>
             <p className="mi-reveal mi-delay-2 mt-5 max-w-2xl text-base leading-7 text-[#f8ead5] sm:text-lg">
               A recruiter-first workspace that turns job descriptions, resume PDFs, and recruiter preferences into evidence-backed shortlist decisions.
             </p>
             <div className="mi-reveal mi-delay-3 mt-7 flex flex-wrap gap-3">
-              <Link href="/signup" className="mi-button-shine inline-flex h-11 items-center gap-2 rounded-full bg-[#fff7e8] px-5 text-sm font-black text-[#24140f] transition hover:bg-white">
+              <Link href="/signup" className="inline-flex min-h-12 items-center gap-2 rounded-full bg-[#fff7e8] px-5 py-2.5 text-sm font-black leading-5 text-[#24140f] transition hover:bg-white">
                 Create account <ArrowRight size={16} />
               </Link>
-              <a href="#product" className="inline-flex h-11 items-center rounded-full border border-white/25 px-5 text-sm font-bold text-white transition hover:bg-white/10">
+              <a href="#product" className="inline-flex min-h-11 items-center rounded-full border border-white/25 px-5 py-2 text-sm font-bold leading-5 text-white transition hover:bg-white/10">
                 See product
               </a>
             </div>
@@ -166,7 +166,7 @@ export default function LandingPage() {
               {candidateRows.map(([name, status, copy, tone]) => (
                 <div key={name} className="mi-candidate-row rounded-2xl border border-white/10 bg-white/[.06] p-3">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="truncate text-sm font-black">{name}</p>
+                    <p className="min-w-0 break-words text-sm font-black leading-5">{name}</p>
                     <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black ${
                       tone === "pass"
                         ? "border-[#82d89a]/40 bg-[#073a21] text-[#a7efba]"
@@ -177,7 +177,7 @@ export default function LandingPage() {
                       {status}
                     </span>
                   </div>
-                  <p className="mt-2 truncate text-xs text-[#f8ead5]">{copy}</p>
+                  <p className="mt-2 break-words text-xs leading-5 text-[#f8ead5]">{copy}</p>
                 </div>
               ))}
             </div>
@@ -246,10 +246,10 @@ export default function LandingPage() {
                 </div>
                 <div className="grid gap-2">
                   {evidenceRows.map(([label, score, note]) => (
-                    <div key={label} className="mi-evidence-row grid grid-cols-[86px_72px_minmax(0,1fr)] gap-2 rounded-xl border border-[#ead6bd] bg-[#fffaf0] px-3 py-2">
-                      <span className="truncate text-xs font-black text-[#7d6a58]">{label}</span>
+                    <div key={label} className="mi-evidence-row grid gap-2 rounded-xl border border-[#ead6bd] bg-[#fffaf0] px-3 py-2 sm:grid-cols-[86px_72px_minmax(0,1fr)]">
+                      <span className="break-words text-xs font-black leading-5 text-[#7d6a58]">{label}</span>
                       <span className="rounded-full bg-[#24140f] px-2 py-0.5 text-center text-[10px] font-black text-white">{score}</span>
-                      <span className="truncate text-sm text-[#4f4034]">{note}</span>
+                      <span className="break-words text-sm leading-5 text-[#4f4034]">{note}</span>
                     </div>
                   ))}
                 </div>
@@ -258,10 +258,10 @@ export default function LandingPage() {
                 <p className="text-xs font-black uppercase text-[#bd641f]">Evidence scorecard</p>
                 <div className="mt-3 grid gap-2">
                   {scoreRows.map((row, index) => (
-                    <div key={row} className="grid grid-cols-[minmax(0,1fr)_48px_90px] gap-3 text-sm">
-                      <span className="truncate">{row}</span>
+                    <div key={row} className="grid gap-2 text-sm sm:grid-cols-[minmax(0,1fr)_48px_110px]">
+                      <span className="break-words leading-5">{row}</span>
                       <span className="font-black">{index === 1 ? "3/5" : "4/5"}</span>
-                      <span className="truncate text-[#6f5c4c]">{index === 1 ? "Thin proof" : "Evidence found"}</span>
+                      <span className="break-words leading-5 text-[#6f5c4c]">{index === 1 ? "Thin proof" : "Evidence found"}</span>
                     </div>
                   ))}
                 </div>
@@ -298,7 +298,7 @@ export default function LandingPage() {
               <p className="text-xs font-black uppercase text-[#bd641f]">Role tailored</p>
               <h2 className="mt-3 text-3xl font-black sm:text-4xl">Resume review tailored for every role.</h2>
             </div>
-            <Link href="/signup" className="mi-button-shine inline-flex h-10 items-center gap-2 rounded-full bg-[#24140f] px-4 text-sm font-black text-white">
+            <Link href="/signup" className="inline-flex min-h-12 items-center gap-2 rounded-full bg-[#24140f] px-4 py-2.5 text-sm font-black leading-5 text-white">
               Try workspace <ArrowRight size={15} />
             </Link>
           </div>
@@ -381,10 +381,10 @@ export default function LandingPage() {
               Start with a workspace account, or leave your details and we will track interest against the Mieru backend.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
-              <Link href="/signup" className="mi-button-shine inline-flex h-11 items-center gap-2 rounded-full bg-white px-5 text-sm font-black text-[#24140f] transition hover:bg-[#fff7e8]">
+              <Link href="/signup" className="inline-flex min-h-12 items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-black leading-5 text-[#24140f] transition hover:bg-[#fff7e8]">
                 Create account <ArrowRight size={16} />
               </Link>
-              <Link href="/login" className="inline-flex h-11 items-center rounded-full border border-white/20 px-5 text-sm font-bold text-white transition hover:bg-white/10">
+              <Link href="/login" className="inline-flex min-h-11 items-center rounded-full border border-white/20 px-5 py-2 text-sm font-bold leading-5 text-white transition hover:bg-white/10">
                 Log in
               </Link>
             </div>
