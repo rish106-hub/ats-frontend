@@ -1,5 +1,22 @@
 export const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+async function getAccessToken() {
+  if (typeof window === "undefined") return null;
+  try {
+    const { createClient } = await import("@/lib/supabase/client");
+    const supabase = createClient();
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function authHeaders(): Promise<Record<string, string>> {
+  const token = await getAccessToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export type SessionStatus =
   | "created"
   | "jd_analyzed"
@@ -119,9 +136,52 @@ export interface ResumeLens {
 }
 
 export interface InterpretResponse {
+  intent_type?: "hard_filter" | "p0_signal" | "relax_filter" | "red_flag" | "ambiguous";
   interpretation: string;
   will_do: string[];
   confirmation_prompt: string;
+}
+
+export interface Me {
+  user_id: string;
+  organization_id: string;
+  email?: string | null;
+  name?: string | null;
+  role: string;
+  onboarding_completed: boolean;
+}
+
+export interface OnboardingProfileInput {
+  full_name?: string;
+  work_email?: string;
+  job_title?: string;
+  company_name: string;
+  company_website?: string;
+  company_size?: string;
+  industry?: string;
+  hiring_volume?: string;
+  ats_tools?: string[];
+  pain_points?: string[];
+  primary_goal?: string;
+  consent?: boolean;
+  complete?: boolean;
+}
+
+export interface OnboardingProfile extends OnboardingProfileInput {
+  id: string;
+  organization_id: string;
+  user_id: string;
+  completed_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InterestInput {
+  email: string;
+  company_name: string;
+  role: string;
+  source: string;
+  metadata_json?: Record<string, unknown>;
 }
 
 export interface LessonLearned {
@@ -168,12 +228,16 @@ export interface Session {
 }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
+  const dynamicAuthHeaders = await authHeaders();
+  const headers = new Headers(init?.headers);
+  if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  Object.entries(dynamicAuthHeaders).forEach(([key, value]) => headers.set(key, value));
   const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
     ...init,
+    headers,
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    const err = await res.json().catch(async () => ({ detail: (await res.text().catch(() => "")) || res.statusText }));
     let msg = "Request failed";
     if (typeof err.detail === "string") {
       msg = err.detail;
@@ -184,10 +248,30 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new Error(msg);
   }
-  return res.json() as Promise<T>;
+  if (res.status === 204) return undefined as T;
+  const text = await res.text();
+  if (!text) return undefined as T;
+  return JSON.parse(text) as T;
 }
 
 export const api = {
+  me: () => req<Me>("/api/me"),
+
+  getOnboardingProfile: () =>
+    req<OnboardingProfile | null>("/api/onboarding/profile"),
+
+  saveOnboardingProfile: (profile: OnboardingProfileInput) =>
+    req<OnboardingProfile>("/api/onboarding/profile", {
+      method: "POST",
+      body: JSON.stringify(profile),
+    }),
+
+  saveInterest: (interest: InterestInput) =>
+    req<unknown>("/api/public/interest", {
+      method: "POST",
+      body: JSON.stringify(interest),
+    }),
+
   listSessions: () => req<Session[]>("/api/sessions"),
 
   createSession: () =>
@@ -201,12 +285,14 @@ export const api = {
       body: JSON.stringify({ jd_text: jdText, api_key: apiKey }),
     }),
 
-  uploadResumes: (id: string, files: File[], apiKey?: string) => {
+  uploadResumes: async (id: string, files: File[], apiKey?: string) => {
     const form = new FormData();
     files.forEach((f) => form.append("files", f));
     if (apiKey) form.append("api_key", apiKey);
+    const dynamicAuthHeaders = await authHeaders();
     return fetch(`${BASE}/api/sessions/${id}/resumes`, {
       method: "POST",
+      headers: dynamicAuthHeaders,
       body: form,
     }).then(async (r) => {
       if (!r.ok) {
@@ -232,10 +318,11 @@ export const api = {
     instructions: string,
     candidate_feedback: CandidateFeedback[] = [],
     apiKey?: string,
+    rescore = true,
   ) =>
     req<Session>(`/api/sessions/${id}/preview/refine`, {
       method: "POST",
-      body: JSON.stringify({ instructions, candidate_feedback, api_key: apiKey }),
+      body: JSON.stringify({ instructions, candidate_feedback, api_key: apiKey, rescore }),
     }),
 
   reloadPreview: (id: string, apiKey?: string) =>
@@ -252,6 +339,19 @@ export const api = {
 
   listResumes: (id: string) =>
     req<ResumeListItem[]>(`/api/sessions/${id}/resumes`),
+
+  resumePdfBlobUrl: async (sessionId: string, fileName: string) => {
+    const dynamicAuthHeaders = await authHeaders();
+    const res = await fetch(`${BASE}/api/sessions/${sessionId}/resumes/${encodeURIComponent(fileName)}/pdf`, {
+      headers: dynamicAuthHeaders,
+    });
+    if (!res.ok) {
+      const message = await res.text().catch(() => res.statusText);
+      throw new Error(message || "Unable to load resume PDF");
+    }
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  },
 
   fullEvalStatus: (id: string) =>
     req<FullEvalStatus>(`/api/sessions/${id}/full-eval-status`),

@@ -131,6 +131,53 @@
   50%      { opacity: 1;    r: 5; }
 }
 
+@keyframes mi-rise-in {
+  from { opacity: 0; transform: translateY(22px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes mi-hero-breathe {
+  0%, 100% { background-position: 0% 50%, 50% 50%, 0% 50%; }
+  50% { background-position: 60% 42%, 38% 58%, 100% 50%; }
+}
+@keyframes mi-aurora-sweep {
+  0% { transform: translate3d(-18%, -8%, 0) rotate(-8deg); opacity: 0.42; }
+  50% { transform: translate3d(12%, 8%, 0) rotate(-2deg); opacity: 0.64; }
+  100% { transform: translate3d(-18%, -8%, 0) rotate(-8deg); opacity: 0.42; }
+}
+@keyframes mi-float-soft {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(-0.4deg); }
+  50% { transform: translate3d(0, -10px, 0) rotate(0.4deg); }
+}
+@keyframes mi-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+@keyframes mi-marquee-reverse {
+  from { transform: translateX(-50%); }
+  to { transform: translateX(0); }
+}
+@keyframes mi-live-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(130, 216, 154, 0.28); }
+  50% { box-shadow: 0 0 0 5px rgba(130, 216, 154, 0); }
+}
+@keyframes mi-card-pop {
+  from { opacity: 0; transform: translateY(14px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes mi-shine {
+  0% { transform: translateX(-120%) skewX(-18deg); }
+  45%, 100% { transform: translateX(220%) skewX(-18deg); }
+}
+@keyframes mi-scan {
+  0% { transform: translateY(-120%); opacity: 0; }
+  24% { opacity: 0.55; }
+  100% { transform: translateY(540%); opacity: 0; }
+}
+@keyframes mi-score-line {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
 /* ── Toast animations ───────────────────────────────────────────── */
 @keyframes nh-toast-in {
   from { opacity: 0; transform: translateX(110%); }
@@ -183,6 +230,412 @@
 
 /* ── Utilities ─────────────────────────────────────────────────── */
 @layer utilities {
+  .sd-shell {
+    width: min(1180px, calc(100vw - 32px));
+    margin: 0 auto;
+  }
+
+  .sd-hero {
+    min-height: min(760px, 92vh);
+    background:
+      linear-gradient(90deg, rgba(21, 20, 17, 0.94) 0%, rgba(21, 20, 17, 0.86) 38%, rgba(21, 20, 17, 0.36) 72%, rgba(21, 20, 17, 0.14) 100%),
+      url("/scoring-dashboard.png");
+    background-size: cover;
+    background-position: center right;
+  }
+
+  .sd-section {
+    border-top: 1px solid #ded8cc;
+  }
+
+  .sd-card {
+    border: 1px solid #ded8cc;
+    background: #fffdf8;
+    border-radius: 12px;
+    box-shadow: 0 1px 0 rgba(21, 20, 17, 0.04);
+  }
+
+  .sd-workspace {
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: #151411;
+    color: white;
+    border-radius: 14px;
+    box-shadow: 0 28px 80px rgba(0, 0, 0, 0.22);
+  }
+
+  .sd-grid {
+    background-image:
+      linear-gradient(rgba(222, 216, 204, 0.72) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(222, 216, 204, 0.72) 1px, transparent 1px);
+    background-size: 42px 42px;
+  }
+
+  .mi-shell {
+    width: min(1180px, calc(100vw - 32px));
+    margin: 0 auto;
+  }
+
+  .mi-page {
+    background:
+      linear-gradient(180deg, #fff7e8 0%, #fffaf0 38%, #f6ead8 100%);
+  }
+
+  .mi-nav {
+    position: relative;
+    z-index: 4;
+    animation: mi-rise-in 0.65s cubic-bezier(.2,.7,.2,1) both;
+  }
+
+  .mi-hero {
+    min-height: min(780px, 92vh);
+    background:
+      radial-gradient(circle at 72% 16%, rgba(255, 128, 54, 0.58), transparent 34%),
+      radial-gradient(circle at 92% 64%, rgba(163, 32, 20, 0.34), transparent 30%),
+      linear-gradient(135deg, rgba(36, 20, 15, 0.98) 0%, rgba(57, 25, 12, 0.96) 42%, rgba(108, 38, 18, 0.86) 100%);
+    background-size: 145% 145%, 132% 132%, 180% 180%;
+    animation: mi-hero-breathe 16s ease-in-out infinite;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .mi-hero::before {
+    content: "";
+    position: absolute;
+    inset: -28% -18% 44% 18%;
+    background:
+      linear-gradient(115deg, transparent 0%, rgba(255, 246, 224, 0.08) 34%, rgba(255, 167, 83, 0.34) 48%, rgba(116, 23, 14, 0.18) 64%, transparent 100%);
+    border-radius: 999px;
+    pointer-events: none;
+    animation: mi-aurora-sweep 12s ease-in-out infinite;
+  }
+
+  .mi-hero::after {
+    content: "";
+    position: absolute;
+    inset: auto -8% -38% 38%;
+    height: 68%;
+    background: url("/scoring-dashboard.png") center / cover no-repeat;
+    opacity: 0.22;
+    transform: rotate(-4deg);
+    border-radius: 38px;
+    pointer-events: none;
+  }
+
+  .mi-hero > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .mi-reveal {
+    animation: mi-rise-in 0.75s cubic-bezier(.2,.7,.2,1) both;
+  }
+
+  .mi-delay-1 { animation-delay: 90ms; }
+  .mi-delay-2 { animation-delay: 180ms; }
+  .mi-delay-3 { animation-delay: 270ms; }
+  .mi-delay-4 { animation-delay: 360ms; }
+
+  @supports (animation-timeline: view()) {
+    .mi-page section:not(.mi-hero) .mi-reveal {
+      opacity: 0;
+      animation-name: mi-rise-in;
+      animation-duration: 0.72s;
+      animation-fill-mode: both;
+      animation-timing-function: cubic-bezier(.2,.7,.2,1);
+      animation-timeline: view();
+      animation-range: entry 8% cover 34%;
+    }
+  }
+
+  .mi-chip-marquee,
+  .mi-signal-marquee {
+    overflow: hidden;
+    mask-image: linear-gradient(90deg, transparent 0, #000 9%, #000 91%, transparent 100%);
+  }
+
+  .mi-chip-track {
+    display: flex;
+    width: max-content;
+    gap: 8px;
+    animation: mi-marquee 28s linear infinite;
+  }
+
+  .mi-chip-track:hover,
+  .mi-signal-track:hover {
+    animation-play-state: paused;
+  }
+
+  .mi-signal-marquee {
+    width: min(610px, 100%);
+  }
+
+  .mi-signal-track {
+    display: flex;
+    width: max-content;
+    align-items: center;
+    gap: 18px;
+    animation: mi-marquee-reverse 34s linear infinite;
+  }
+
+  .mi-signal-track span {
+    white-space: nowrap;
+  }
+
+  .mi-hero-card {
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(23, 12, 8, 0.9);
+    border-radius: 28px;
+    padding: 18px;
+    box-shadow: 0 32px 90px rgba(0, 0, 0, 0.28);
+    position: relative;
+    overflow: hidden;
+    transform: translateZ(0);
+  }
+
+  .mi-hero-card::before,
+  .mi-report-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, transparent 0%, rgba(255, 204, 122, 0.18) 46%, transparent 100%);
+    height: 28%;
+    pointer-events: none;
+    animation: mi-scan 7s ease-in-out infinite;
+  }
+
+  .mi-float-card {
+    animation: mi-float-soft 7s ease-in-out infinite;
+  }
+
+  .mi-live-pill {
+    animation: mi-live-pulse 2.3s ease-in-out infinite;
+  }
+
+  .mi-candidate-row {
+    animation: mi-card-pop 0.62s cubic-bezier(.2,.7,.2,1) both;
+    transition: transform 0.22s ease, border-color 0.22s ease, background 0.22s ease;
+  }
+
+  .mi-candidate-row:nth-child(2) { animation-delay: 120ms; }
+  .mi-candidate-row:nth-child(3) { animation-delay: 240ms; }
+
+  .mi-candidate-row:hover {
+    transform: translateX(4px);
+    border-color: rgba(255, 204, 122, 0.32);
+    background: rgba(255, 255, 255, 0.09);
+  }
+
+  .mi-instruction-card {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .mi-instruction-card::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    border: 1px solid rgba(255, 204, 122, 0.14);
+    pointer-events: none;
+  }
+
+  .mi-card {
+    border: 1px solid #ead6bd;
+    background: #fffaf0;
+    border-radius: 24px;
+    box-shadow: 0 1px 0 rgba(36, 20, 15, 0.04);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .mi-hover-lift {
+    transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease, background 0.22s ease;
+  }
+
+  .mi-hover-lift:hover {
+    transform: translateY(-5px);
+    border-color: #d79b58;
+    background: #fffdf8;
+    box-shadow: 0 18px 45px rgba(93, 41, 18, 0.12);
+  }
+
+  .mi-icon-disc {
+    display: inline-flex;
+    height: 38px;
+    width: 38px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: #f4dcc0;
+    color: #bd641f;
+    box-shadow: inset 0 0 0 1px rgba(189, 100, 31, 0.12);
+  }
+
+  .mi-button-shine {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+  }
+
+  .mi-button-shine::after {
+    content: "";
+    position: absolute;
+    inset: -20% auto -20% 0;
+    width: 44%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.42), transparent);
+    animation: mi-shine 3.8s ease-in-out infinite;
+    z-index: -1;
+  }
+
+  .mi-report-shell {
+    animation-delay: 120ms;
+  }
+
+  .mi-report-card {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .mi-score-badge {
+    animation: mi-card-pop 0.68s cubic-bezier(.2,.7,.2,1) 180ms both;
+  }
+
+  .mi-score-card {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .mi-score-card::after {
+    content: "";
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    bottom: 12px;
+    height: 5px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #b42318 0 24%, #b54708 24% 54%, #067232 54% 100%);
+    transform-origin: left;
+    animation: mi-score-line 1.1s cubic-bezier(.2,.7,.2,1) 260ms both;
+  }
+
+  .mi-evidence-row,
+  .mi-proof-line,
+  .mi-step-row {
+    animation: mi-card-pop 0.58s cubic-bezier(.2,.7,.2,1) both;
+  }
+
+  .mi-evidence-row:nth-child(2),
+  .mi-proof-line:nth-child(2),
+  .mi-step-row:nth-child(2) { animation-delay: 80ms; }
+
+  .mi-evidence-row:nth-child(3),
+  .mi-proof-line:nth-child(3),
+  .mi-step-row:nth-child(3) { animation-delay: 160ms; }
+
+  .mi-step-row:nth-child(4) { animation-delay: 240ms; }
+  .mi-step-row:nth-child(5) { animation-delay: 320ms; }
+
+  .mi-role-card:nth-child(2),
+  .mi-risk-card:nth-child(2),
+  .mi-timeline-card:nth-child(2) { animation-delay: 80ms; }
+
+  .mi-role-card:nth-child(3),
+  .mi-risk-card:nth-child(3) { animation-delay: 140ms; }
+
+  .mi-role-card:nth-child(4),
+  .mi-risk-card:nth-child(4) { animation-delay: 200ms; }
+
+  .mi-role-card:nth-child(5),
+  .mi-risk-card:nth-child(5) { animation-delay: 260ms; }
+
+  .mi-role-card:nth-child(6),
+  .mi-risk-card:nth-child(6) { animation-delay: 320ms; }
+
+  .mi-risk-card {
+    transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+  }
+
+  .mi-risk-card:hover {
+    transform: translateY(-4px);
+    border-color: #d79b58;
+    box-shadow: 0 16px 36px rgba(93, 41, 18, 0.09);
+  }
+
+  .mi-timeline-card {
+    overflow: hidden;
+  }
+
+  .mi-scorecard {
+    animation: mi-card-pop 0.72s cubic-bezier(.2,.7,.2,1) 220ms both;
+  }
+
+  @media (max-width: 760px) {
+    .sd-hero {
+      min-height: auto;
+      background:
+        linear-gradient(180deg, rgba(21, 20, 17, 0.96) 0%, rgba(21, 20, 17, 0.88) 62%, rgba(21, 20, 17, 0.48) 100%),
+        url("/scoring-dashboard.png");
+      background-size: cover;
+      background-position: center top;
+    }
+
+    .mi-hero {
+      min-height: auto;
+    }
+
+    .mi-hero::after {
+      inset: auto -40% -26% 0;
+      height: 44%;
+      opacity: 0.16;
+    }
+
+    .mi-nav {
+      padding-top: 14px;
+      padding-bottom: 14px;
+    }
+
+    .mi-chip-marquee {
+      width: 100%;
+    }
+
+    .mi-signal-marquee {
+      width: 100%;
+      max-width: 100%;
+    }
+
+    .mi-hero-card {
+      border-radius: 22px;
+      padding: 14px;
+    }
+
+    .mi-float-card {
+      animation: mi-rise-in 0.75s cubic-bezier(.2,.7,.2,1) 280ms both;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .mi-hero,
+    .mi-hero::before,
+    .mi-hero-card::before,
+    .mi-report-card::before,
+    .mi-float-card,
+    .mi-reveal,
+    .mi-chip-track,
+    .mi-signal-track,
+    .mi-live-pill,
+    .mi-candidate-row,
+    .mi-button-shine::after,
+    .mi-score-badge,
+    .mi-score-card::after,
+    .mi-evidence-row,
+    .mi-proof-line,
+    .mi-step-row,
+    .mi-scorecard {
+      animation: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+    }
+  }
 
   /* ── Glass depth system ────────────────────────────── */
   
@@ -546,10 +999,11 @@ input[type="range"] {
   height: 4px; background: rgba(79,110,247,0.14);
   border-radius: 2px; cursor: pointer;
 }
-input[type="range"]::-webkit-slider-thumb {
+  input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none; width: 15px; height: 15px;
   border-radius: 50%; background: #4f6ef7;
   border: 2px solid rgba(255,255,255,0.18);
   box-shadow: 0 0 10px rgba(79,110,247,0.55);
   cursor: pointer;
 }
+

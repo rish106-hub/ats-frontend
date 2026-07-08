@@ -1,437 +1,397 @@
-"use client";
-
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { api, type Session } from "@/lib/api";
+import Link from "next/link";
 import {
-  AlertCircle,
   ArrowRight,
+  BadgeCheck,
+  BookOpenCheck,
+  Brain,
   BriefcaseBusiness,
   CheckCircle2,
-  ClipboardList,
-  Clock3,
-  FileText,
+  ClipboardCheck,
+  Code2,
+  FileSearch,
   Gauge,
-  Layers3,
-  Loader2,
-  Plus,
-  Radar,
-  Sparkles,
-  Trash2,
-  TriangleAlert,
+  Languages,
+  MessageSquareText,
+  ShieldAlert,
   UsersRound,
-  X,
 } from "lucide-react";
+import { LandingInterestForm } from "@/components/landing-interest-form";
+import { MieruLogo } from "@/components/mieru-logo";
 
-type StatusTone = {
-  label: string;
-  desk: string;
-  action: string;
-  tone: string;
-  bg: string;
-  border: string;
-};
+const roleChips = ["Product", "Engineering", "Sales", "Design", "Data", "Operations"];
+const roleMarquee = [...roleChips, ...roleChips, ...roleChips];
+const signalStrip = [
+  "Rubric versions",
+  "Resume proof",
+  "Private notes",
+  "Decision packets",
+  "Hard filters",
+  "Evidence trails",
+  "Calibration",
+  "Shortlist review",
+];
 
-const STATUS: Record<string, StatusTone> = {
-  created: {
-    label: "Needs JD",
-    desk: "Draft the role brief",
-    action: "Add JD",
-    tone: "#f59e0b",
-    bg: "rgba(245,158,11,.08)",
-    border: "rgba(245,158,11,.22)",
+const candidateRows = [
+  ["Aarav Mehta", "Priority", "Product ownership shown in two shipped features", "pass"],
+  ["Nisha Rao", "Review", "Metrics present, but launch scope needs verification", "review"],
+  ["Dev Sinha", "Reject", "No direct PM ownership evidence found", "fail"],
+];
+
+const evidenceRows = [
+  ["Role fit", "Good", "Owned roadmap slices and shipped customer-facing feature."],
+  ["Hard filter", "Review", "Institution proof is unclear; verify before advancing."],
+  ["Red flag", "Clean", "No unexplained gap or contradictory role evidence found."],
+];
+
+const scoreRows = ["Shipped customer feature", "Product metrics", "Stakeholder ownership"];
+
+const featureBlocks = [
+  {
+    title: "Built on role-specific rubrics",
+    copy: "Start from the JD, then teach the model what your hiring team rewards, relaxes, or rejects.",
+    icon: Gauge,
   },
-  jd_analyzed: {
-    label: "Needs resumes",
-    desk: "Upload candidate batch",
-    action: "Upload resumes",
-    tone: "#38bdf8",
-    bg: "rgba(14,165,233,.08)",
-    border: "rgba(14,165,233,.22)",
+  {
+    title: "Every score has evidence",
+    copy: "Hard filters, review signals, and red flags stay tied to resume snippets instead of hidden reasoning.",
+    icon: FileSearch,
   },
-  resumes_uploaded: {
-    label: "Ready to calibrate",
-    desk: "Start model calibration",
-    action: "Calibrate",
-    tone: "#22c55e",
-    bg: "rgba(34,197,94,.08)",
-    border: "rgba(34,197,94,.22)",
+  {
+    title: "PDF review without tab chaos",
+    copy: "Open the resume beside the candidate evidence, with private notes stored against that resume.",
+    icon: BookOpenCheck,
   },
-  rubric_ready: {
-    label: "Rubric ready",
-    desk: "Review first candidates",
-    action: "Start review",
-    tone: "#22c55e",
-    bg: "rgba(34,197,94,.08)",
-    border: "rgba(34,197,94,.22)",
+  {
+    title: "2-minute shortlist summary",
+    copy: "See the candidate’s decision status, confidence, strongest signal, and blocker in a compact report.",
+    icon: ClipboardCheck,
   },
-  preview_active: {
-    label: "Calibration live",
-    desk: "Tune the shortlist logic",
-    action: "Review queue",
-    tone: "#f97316",
-    bg: "rgba(249,115,22,.08)",
-    border: "rgba(249,115,22,.22)",
+  {
+    title: "Plain-language calibration",
+    copy: "Recruiters can write instructions naturally and confirm exactly how the rubric will change.",
+    icon: MessageSquareText,
   },
-  running_full_eval: {
-    label: "Shortlist running",
-    desk: "Monitor the final run",
-    action: "Track run",
-    tone: "#06b6d4",
-    bg: "rgba(6,182,212,.08)",
-    border: "rgba(6,182,212,.22)",
+  {
+    title: "Works across roles",
+    copy: "Product, engineering, sales, data, marketing, ops, HR, finance, and legal workflows fit the same evidence engine.",
+    icon: BriefcaseBusiness,
   },
-  completed: {
-    label: "Decision packet ready",
-    desk: "Review final shortlist",
-    action: "Open results",
-    tone: "#a3e635",
-    bg: "rgba(163,230,53,.08)",
-    border: "rgba(163,230,53,.22)",
-  },
-};
+];
 
-const FALLBACK = STATUS.created;
+const antiRisk = [
+  "No evidence quote",
+  "Missing source field",
+  "Conflicting parsed facts",
+  "Scanned or low-text PDF",
+  "Rubric drift",
+  "Unclear recruiter preference",
+  "Sensitive proxy signal",
+  "Model incomplete response",
+];
 
-function roleName(session: Session) {
-  return String((session.jd_analysis as any)?.role || "Untitled hiring role");
-}
+const roleCards = [
+  ["Product Manager", "Ownership, launch judgment, metrics, stakeholder depth"],
+  ["Software Engineer", "Production systems, code ownership, architecture evidence"],
+  ["Sales", "Quota ownership, pitch quality, objection handling, CRM hygiene"],
+  ["Data Analyst", "SQL depth, business metrics, dashboarding, decision impact"],
+  ["Marketing", "Channel ownership, experiments, CAC/LTV thinking, creative signal"],
+  ["Operations", "Process design, execution rigor, cross-functional reliability"],
+];
 
-function roleBrief(session: Session) {
-  return String((session.jd_analysis as any)?.one_liner || "Create the role brief, upload resumes, calibrate the model, then run the shortlist.");
-}
+const comparison = [
+  ["Manual shortlist", "JD read", "Resume skim", "Spreadsheet notes", "Hiring manager debate", "Rework unclear criteria"],
+  ["Mieru shortlist", "JD parsed", "Rubric calibrated", "Evidence cards", "Decision packet", "Notes preserved"],
+];
 
-function statusFor(session: Session) {
-  return STATUS[session.status] || FALLBACK;
-}
-
-function candidatesNeedingWork(session: Session) {
-  if (session.status === "created") return "JD missing";
-  if (["jd_analyzed", "rubric_ready"].includes(session.status)) return "Resume batch missing";
-  if (session.status === "resumes_uploaded") return "Calibration not started";
-  if (session.status === "preview_active") return "Recruiter review needed";
-  if (session.status === "running_full_eval") return "Final run in progress";
-  return "Shortlist ready";
-}
-
-function DeskSignal({ label, value }: { label: string; value: string }) {
+export default function LandingPage() {
   return (
-    <div className="min-w-0 rounded-lg border border-white/10 bg-white/[.06] px-3 py-2">
-      <p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#c7b18b]">{label}</p>
-      <p className="mt-1 truncate text-sm font-black text-white" title={value}>{value}</p>
-    </div>
-  );
-}
+    <main className="mi-page bg-[#fff7e8] text-[#24140f]">
+      <section className="mi-hero text-white">
+        <nav className="mi-nav mi-shell flex items-center justify-between gap-4 py-5">
+          <MieruLogo inverse />
+          <div className="hidden items-center gap-6 text-sm font-semibold text-[#f7d8ad] md:flex">
+            <a href="#product" className="hover:text-white">Product</a>
+            <a href="#why" className="hover:text-white">Why Mieru?</a>
+            <a href="#roles" className="hover:text-white">Roles</a>
+            <a href="#workflow" className="hover:text-white">Workflow</a>
+          </div>
+          <div className="flex items-center gap-2">
+            <Link href="/login" className="hidden rounded-full border border-white/20 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10 sm:inline-flex">
+              Log in
+            </Link>
+            <Link href="/signup" className="inline-flex items-center gap-2 rounded-full bg-[#fff7e8] px-4 py-2 text-sm font-black text-[#24140f] transition hover:bg-white">
+              Start workspace <ArrowRight size={15} />
+            </Link>
+          </div>
+        </nav>
 
-export default function HomePage() {
-  const router = useRouter();
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [error, setError] = useState("");
-  const [deskNote, setDeskNote] = useState("");
-
-  useEffect(() => {
-    api.listSessions()
-      .then(setSessions)
-      .catch(() => setError("Backend is not reachable on the configured API URL."))
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    setDeskNote(window.localStorage.getItem("nexthire:hiring-desk-note") || "");
-  }, []);
-
-  function updateDeskNote(value: string) {
-    setDeskNote(value);
-    window.localStorage.setItem("nexthire:hiring-desk-note", value);
-  }
-
-  async function createRole() {
-    setCreating(true);
-    setError("");
-    try {
-      const session = await api.createSession();
-      router.push(`/sessions/${session.id}`);
-    } catch (e) {
-      setError((e as Error).message || "Could not create role.");
-      setCreating(false);
-    }
-  }
-
-  async function deleteRole(session: Session) {
-    setDeletingId(session.id);
-    try {
-      await api.deleteSession(session.id);
-      setSessions((items) => items.filter((item) => item.id !== session.id));
-    } catch (e) {
-      setError((e as Error).message || "Delete failed.");
-    } finally {
-      setDeletingId(null);
-    }
-  }
-
-  const desk = useMemo(() => {
-    const needsJd = sessions.filter((s) => s.status === "created").length;
-    const needsCalibration = sessions.filter((s) => ["resumes_uploaded", "rubric_ready", "preview_active"].includes(s.status)).length;
-    const ready = sessions.filter((s) => s.status === "completed").length;
-    return [
-      { label: "Needs role brief", value: needsJd, icon: FileText, tone: "#f59e0b", copy: "Draft the JD before resumes enter the review lane." },
-      { label: "Needs calibration", value: needsCalibration, icon: Radar, tone: "#22c55e", copy: "Review evidence and teach the model what good looks like." },
-      { label: "Ready for decision", value: ready, icon: CheckCircle2, tone: "#a3e635", copy: "Open final shortlists and inspect evidence before outreach." },
-    ];
-  }, [sessions]);
-
-  const activeRoles = sessions.filter((s) => s.status !== "completed");
-  const completedRoles = sessions.filter((s) => s.status === "completed");
-  const ordered = [...activeRoles, ...completedRoles];
-  const focusRole = ordered.find((s) => ["preview_active", "resumes_uploaded", "rubric_ready"].includes(s.status)) || ordered[0];
-  const focusStatus = focusRole ? statusFor(focusRole) : null;
-
-  return (
-    <main className="min-h-screen bg-[#f5f2ea] text-[#151411]">
-      <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[248px_minmax(0,1fr)]">
-        <aside className="border-b border-[#ded8cc] bg-[#f9f7f1] px-5 py-5 lg:border-b-0 lg:border-r lg:py-6">
-          <div className="flex items-center justify-between gap-4 lg:block">
-            <button onClick={() => router.push("/")} className="flex items-center gap-3 text-left">
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#151411] text-white">
-                <Sparkles size={16} />
-              </span>
-              <span>
-                <span className="block text-sm font-black tracking-tight">NextHire</span>
-                <span className="block text-[11px] text-[#777064]">Recruiter cockpit</span>
-              </span>
-            </button>
-            <button
-              onClick={createRole}
-              disabled={creating}
-              className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#151411] px-3 text-xs font-semibold text-white transition hover:bg-[#2a2823] disabled:opacity-60 lg:mt-8 lg:w-full lg:justify-center"
-            >
-              {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-              New role
-            </button>
+        <div className="mi-hero-layout mi-shell grid min-h-[calc(min(780px,92vh)-92px)] items-center gap-8 py-10 lg:grid-cols-[minmax(0,1fr)_470px]">
+          <div className="mi-hero-copy min-w-0 max-w-3xl">
+            <p className="mi-reveal inline-flex rounded-full border border-[#ffcc7a]/30 bg-[#3a1c10]/70 px-3 py-1 text-xs font-black uppercase text-[#ffcc7a]">
+              Built for 250-resume hiring loops
+            </p>
+            <h1 className="mi-reveal mi-delay-1 mt-5 max-w-3xl text-5xl font-black leading-[0.94] sm:text-6xl lg:text-7xl">
+              Never shortlist blind again. Mieru shows the proof.
+            </h1>
+            <p className="mi-reveal mi-delay-2 mt-5 max-w-2xl text-base leading-7 text-[#f8ead5] sm:text-lg">
+              A recruiter-first workspace that turns job descriptions, resume PDFs, and recruiter preferences into evidence-backed shortlist decisions.
+            </p>
+            <div className="mi-reveal mi-delay-3 mt-7 flex flex-wrap gap-3">
+              <Link href="/signup" className="mi-button-shine inline-flex h-11 items-center gap-2 rounded-full bg-[#fff7e8] px-5 text-sm font-black text-[#24140f] transition hover:bg-white">
+                Create account <ArrowRight size={16} />
+              </Link>
+              <a href="#product" className="inline-flex h-11 items-center rounded-full border border-white/25 px-5 text-sm font-bold text-white transition hover:bg-white/10">
+                See product
+              </a>
+            </div>
+            <div className="mi-reveal mi-delay-4 mt-7 max-w-xl overflow-hidden">
+              <div className="mi-chip-marquee" aria-label="Supported hiring roles">
+                <div className="mi-chip-track">
+                  {roleMarquee.map((chip, index) => (
+                    <span key={`${chip}-${index}`} className="rounded-full border border-[#ffcc7a]/20 bg-[#24140f]/55 px-3 py-1 text-xs font-bold text-[#f7d8ad]">
+                      {chip}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
 
-          <nav className="mt-6 hidden space-y-1 lg:block">
-            {[
-              { label: "Hiring desk", icon: BriefcaseBusiness, active: true },
-              { label: "Review queues", icon: UsersRound },
-              { label: "Calibration", icon: Gauge },
-              { label: "Decision packets", icon: ClipboardList },
-            ].map((item) => (
-              <div
-                key={item.label}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${item.active ? "bg-[#ede7da] text-[#151411]" : "text-[#777064]"}`}
-              >
-                <item.icon size={15} />
-                {item.label}
+          <div className="mi-hero-card mi-float-card min-w-0">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <MieruLogo inverse />
+              <span className="mi-live-pill rounded-full border border-[#82d89a]/30 bg-[#073a21] px-2.5 py-1 text-[11px] font-black text-[#a7efba]">Evidence ready</span>
+            </div>
+            <div className="mt-4 grid gap-3">
+              {candidateRows.map(([name, status, copy, tone]) => (
+                <div key={name} className="mi-candidate-row rounded-2xl border border-white/10 bg-white/[.06] p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="truncate text-sm font-black">{name}</p>
+                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black ${
+                      tone === "pass"
+                        ? "border-[#82d89a]/40 bg-[#073a21] text-[#a7efba]"
+                        : tone === "fail"
+                          ? "border-[#ffb4a8]/35 bg-[#4a120b] text-[#ffb4a8]"
+                          : "border-[#ffd37a]/35 bg-[#4a3109] text-[#ffd37a]"
+                    }`}>
+                      {status}
+                    </span>
+                  </div>
+                  <p className="mt-2 truncate text-xs text-[#f8ead5]">{copy}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mi-instruction-card mt-4 rounded-2xl border border-[#ffcc7a]/20 bg-[#2a140d] p-4">
+              <p className="text-[11px] font-black uppercase text-[#ffcc7a]">Recruiter instruction</p>
+              <p className="mt-2 text-sm text-[#fff7e8]">Only advance candidates with direct product evidence and clear institution proof.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="mi-trust-strip border-y border-[#ead6bd] bg-[#fffaf0] py-5">
+        <div className="mi-shell flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs font-black uppercase text-[#9c5a1c]">For recruiters who need evidence before interviews</p>
+          <div className="mi-signal-marquee text-xs font-bold text-[#7d6a58]">
+            <div className="mi-signal-track">
+              {[...signalStrip, ...signalStrip].map((item, index) => (
+                <span key={`${item}-${index}`}>{item}</span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="product" className="py-14 sm:py-16">
+        <div className="mi-shell">
+          <div className="grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
+            <div className="mi-reveal">
+              <p className="text-xs font-black uppercase text-[#bd641f]">End-to-end shortlist desk</p>
+              <h2 className="mt-3 text-3xl font-black sm:text-4xl">Everything you need to shortlist automatically, without losing control.</h2>
+              <p className="mt-3 text-sm leading-6 text-[#6f5c4c]">
+                Interview automation starts too late if the shortlist is noisy. Mieru sits one step earlier: it makes resume evidence visible, calibrated, and reviewable before recruiter time is spent.
+              </p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {featureBlocks.map((item) => (
+                <article key={item.title} className="mi-card mi-hover-lift mi-reveal p-4">
+                  <span className="mi-icon-disc">
+                    <item.icon size={18} />
+                  </span>
+                  <h3 className="mt-4 text-lg font-black">{item.title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-[#6f5c4c]">{item.copy}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="why" className="border-y border-[#ead6bd] bg-[#24140f] py-14 text-white sm:py-16">
+        <div className="mi-shell grid gap-7 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-center">
+          <div className="mi-report-shell mi-reveal min-w-0 rounded-[28px] border border-white/10 bg-[#170c08] p-4">
+            <div className="mi-report-card rounded-[22px] border border-[#ffcc7a]/20 bg-[#fff7e8] p-4 text-[#24140f]">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase text-[#bd641f]">Evaluation report</p>
+                  <h3 className="mt-2 text-2xl font-black">Detailed and instance-backed candidate decision</h3>
+                </div>
+                <span className="mi-score-badge rounded-full border border-[#9ed9ad] bg-[#eaf8ed] px-2.5 py-1 text-xs font-black text-[#067232]">Strong maybe</span>
+              </div>
+              <div className="mt-5 grid gap-3 md:grid-cols-[190px_minmax(0,1fr)]">
+                <div className="mi-score-card rounded-2xl border border-[#ead6bd] bg-white p-4">
+                  <p className="text-[11px] font-black uppercase text-[#bd641f]">Final signal</p>
+                  <p className="mt-3 text-5xl font-black">82</p>
+                  <p className="mt-1 text-sm text-[#6f5c4c]">Priority with verification</p>
+                </div>
+                <div className="grid gap-2">
+                  {evidenceRows.map(([label, score, note]) => (
+                    <div key={label} className="mi-evidence-row grid grid-cols-[86px_72px_minmax(0,1fr)] gap-2 rounded-xl border border-[#ead6bd] bg-[#fffaf0] px-3 py-2">
+                      <span className="truncate text-xs font-black text-[#7d6a58]">{label}</span>
+                      <span className="rounded-full bg-[#24140f] px-2 py-0.5 text-center text-[10px] font-black text-white">{score}</span>
+                      <span className="truncate text-sm text-[#4f4034]">{note}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="mi-scorecard mt-4 rounded-2xl border border-[#ead6bd] bg-white p-4">
+                <p className="text-xs font-black uppercase text-[#bd641f]">Evidence scorecard</p>
+                <div className="mt-3 grid gap-2">
+                  {scoreRows.map((row, index) => (
+                    <div key={row} className="grid grid-cols-[minmax(0,1fr)_48px_90px] gap-3 text-sm">
+                      <span className="truncate">{row}</span>
+                      <span className="font-black">{index === 1 ? "3/5" : "4/5"}</span>
+                      <span className="truncate text-[#6f5c4c]">{index === 1 ? "Thin proof" : "Evidence found"}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mi-reveal mi-delay-1">
+            <p className="text-xs font-black uppercase text-[#ffcc7a]">Evidence over explanation</p>
+            <h2 className="mt-3 text-3xl font-black sm:text-4xl">The recruiter sees the decision packet, not a wall of AI prose.</h2>
+            <p className="mt-3 text-sm leading-6 text-[#f8ead5]">
+              Outputs are short, color-coded, and grounded. If the resume does not prove a claim, Mieru marks it as review or insufficient evidence instead of pretending.
+            </p>
+            <div className="mt-5 grid gap-2">
+              {[
+                "Pass appears green only when the resume has a supporting line.",
+                "Review appears amber when evidence is partial or needs recruiter confirmation.",
+                "Reject appears red when a hard filter clearly fails.",
+              ].map((item) => (
+                <div key={item} className="mi-proof-line flex items-center gap-2 text-sm font-semibold text-[#fff7e8]">
+                  <CheckCircle2 size={16} className="text-[#a7efba]" />
+                  {item}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="roles" className="py-14 sm:py-16">
+        <div className="mi-shell">
+          <div className="mi-reveal flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p className="text-xs font-black uppercase text-[#bd641f]">Role tailored</p>
+              <h2 className="mt-3 text-3xl font-black sm:text-4xl">Resume review tailored for every role.</h2>
+            </div>
+            <Link href="/signup" className="mi-button-shine inline-flex h-10 items-center gap-2 rounded-full bg-[#24140f] px-4 text-sm font-black text-white">
+              Try workspace <ArrowRight size={15} />
+            </Link>
+          </div>
+          <div className="mt-6 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+            {roleCards.map(([title, copy], index) => {
+              const icons = [BriefcaseBusiness, Code2, UsersRound, Brain, BadgeCheck, Languages];
+              const Icon = icons[index] || BriefcaseBusiness;
+              return (
+                <article key={title} className="mi-role-card mi-card mi-hover-lift mi-reveal flex min-h-40 flex-col justify-between p-4">
+                  <span className="mi-icon-disc">
+                    <Icon size={20} />
+                  </span>
+                  <div>
+                    <h3 className="text-lg font-black">{title}</h3>
+                    <p className="mt-2 text-sm leading-6 text-[#6f5c4c]">{copy}</p>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      <section className="border-y border-[#ead6bd] bg-[#fffaf0] py-14 sm:py-16">
+        <div className="mi-shell grid gap-7 lg:grid-cols-[360px_minmax(0,1fr)]">
+          <div className="mi-reveal">
+            <p className="text-xs font-black uppercase text-[#bd641f]">Evidence-first guardrails</p>
+            <h2 className="mt-3 text-3xl font-black sm:text-4xl">We are strict about hallucination risk.</h2>
+            <p className="mt-3 text-sm leading-6 text-[#6f5c4c]">
+              Mieru treats uncertain data as recruiter-review territory. That keeps the shortlist calm, auditable, and honest.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {antiRisk.map((item, index) => (
+              <div key={item} className="mi-risk-card mi-reveal rounded-2xl border border-[#ead6bd] bg-white p-4">
+                <ShieldAlert size={18} className={index % 3 === 0 ? "text-[#b42318]" : index % 3 === 1 ? "text-[#b54708]" : "text-[#067232]"} />
+                <p className="mt-3 text-sm font-black">{item}</p>
+                <p className="mt-1 text-xs leading-5 text-[#6f5c4c]">Flagged before it can become a hidden shortlist assumption.</p>
               </div>
             ))}
-          </nav>
-
-          <div className="mt-6 hidden rounded-xl border border-[#ded8cc] bg-white p-4 lg:block">
-            <p className="text-xs font-bold uppercase tracking-[.18em] text-[#9b6a2f]">Today</p>
-            <p className="mt-2 text-sm leading-5 text-[#4d473d]">Start with roles blocked by missing evidence, not vanity counters.</p>
           </div>
-        </aside>
+        </div>
+      </section>
 
-        <section className="px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
-          <div className="mx-auto flex max-w-7xl flex-col gap-5">
-            <header className="grid gap-4">
-              <div className="rounded-2xl border border-[#ded8cc] bg-[#151411] p-4 text-white shadow-sm sm:p-5">
-                <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold uppercase tracking-[.18em] text-[#c7b18b]">Recruiter command center</p>
-                    <h1 className="mt-2 truncate text-2xl font-black tracking-tight sm:text-3xl">
-                      Today's hiring desk
-                    </h1>
-                    <p className="mt-2 max-w-2xl text-sm leading-5 text-[#d6d0c5]">
-                      Work the next blocked role, capture context, then move into calibration or shortlist review.
-                    </p>
-                    <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                      <DeskSignal label="Focus" value={focusRole ? focusStatus?.label || "Open role" : "Create role"} />
-                      <DeskSignal label="Queue" value={focusRole ? candidatesNeedingWork(focusRole) : "No active roles"} />
-                      <DeskSignal label="Action" value={focusStatus?.action || "New role"} />
-                    </div>
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-white/[.06] p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-[11px] font-bold uppercase tracking-[.16em] text-[#c7b18b]">Recruiter scratchpad</p>
-                        <p className="mt-1 truncate text-xs text-[#d6d0c5]">Role context, hiring manager notes, or must-check criteria.</p>
-                      </div>
-                      <button
-                        onClick={() => focusRole ? router.push(`/sessions/${focusRole.id}`) : createRole()}
-                        disabled={creating}
-                        className="shrink-0 rounded-lg bg-white px-3 py-2 text-xs font-black text-[#151411] disabled:opacity-60"
-                      >
-                        {focusStatus?.action || "New role"}
-                      </button>
-                    </div>
-                    <textarea
-                      value={deskNote}
-                      onChange={(e) => updateDeskNote(e.target.value)}
-                      rows={3}
-                      placeholder="Example: prioritize PM ownership, consumer launch proof, and stakeholder evidence."
-                      className="mt-3 w-full resize-none rounded-lg border border-white/15 bg-white/[.08] px-3 py-2 text-sm text-white placeholder:text-[#a9a296] focus:border-white/40 focus:outline-none"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                {desk.map((item) => (
-                  <div key={item.label} className="rounded-2xl border border-[#ded8cc] bg-white p-4 shadow-sm">
-                    <div className="flex items-start gap-3">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ background: `${item.tone}18`, color: item.tone }}>
-                        <item.icon size={17} />
-                      </span>
-                      <div className="min-w-0">
-                        <div className="flex items-baseline gap-2">
-                          <p className="text-2xl font-black leading-none">{item.value}</p>
-                          <p className="truncate text-xs font-semibold text-[#5f584e]">{item.label}</p>
-                        </div>
-                        <p className="mt-1 text-xs leading-5 text-[#777064]">{item.copy}</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </header>
-
-            {error && (
-              <div className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                <span className="flex items-center gap-2"><AlertCircle size={15} /> {error}</span>
-                <button onClick={() => setError("")}><X size={14} /></button>
-              </div>
-            )}
-
-            <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-              <section className="rounded-2xl border border-[#ded8cc] bg-white shadow-sm">
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#ebe5d9] px-4 py-4 sm:px-5">
-                  <div>
-                    <h2 className="text-base font-black">Hiring roles</h2>
-                    <p className="mt-1 text-xs text-[#777064]">Every card has a job: unblock JD, calibrate candidates, or inspect the shortlist.</p>
-                  </div>
-                  <button
-                    onClick={createRole}
-                    disabled={creating}
-                    className="inline-flex items-center gap-2 rounded-lg border border-[#151411] bg-[#151411] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#2a2823] disabled:opacity-60"
-                  >
-                    {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                    Create role
-                  </button>
-                </div>
-
-                {loading ? (
-                  <div className="grid gap-3 p-4 sm:p-5">
-                    {[0, 1, 2].map((i) => <div key={i} className="h-28 animate-pulse rounded-xl bg-[#f0ece3]" />)}
-                  </div>
-                ) : ordered.length === 0 ? (
-                  <div className="grid min-h-[360px] place-items-center p-6 text-center">
-                    <div className="max-w-sm">
-                      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[#ede7da] text-[#151411]"><BriefcaseBusiness size={21} /></div>
-                      <h3 className="mt-4 text-lg font-black">Create your first hiring role</h3>
-                      <p className="mt-2 text-sm leading-6 text-[#777064]">Start with a JD. The workspace will guide you through resumes, calibration, and the final shortlist.</p>
-                      <button onClick={createRole} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#151411] px-4 py-2 text-sm font-semibold text-white">
-                        <Plus size={15} /> New role
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="grid gap-3 p-4 sm:p-5">
-                    {ordered.map((session) => {
-                      const status = statusFor(session);
-                      const date = new Date(session.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
-                      const preview = session.preview_field_results?.summary;
-                      const final = session.full_results?.summary;
-                      const summary = final || preview;
-                      return (
-                        <article key={session.id} className="group rounded-xl border border-[#e4ded2] bg-[#fffdf8] p-4 transition hover:border-[#c9bda9] hover:shadow-sm">
-                          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                            <button onClick={() => router.push(`/sessions/${session.id}`)} className="min-w-0 flex-1 text-left">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ color: status.tone, background: status.bg, border: `1px solid ${status.border}` }}>
-                                  {status.label}
-                                </span>
-                                <span className="text-xs text-[#8b8376]">Created {date}</span>
-                                {session.preview_iteration_count > 0 && <span className="text-xs text-[#8b8376]">{session.preview_iteration_count} calibration pass{session.preview_iteration_count > 1 ? "es" : ""}</span>}
-                              </div>
-                              <h3 className="mt-3 truncate text-lg font-black tracking-tight">{roleName(session)}</h3>
-                              <p className="mt-1 line-clamp-2 max-w-3xl text-sm leading-6 text-[#645d52]">{roleBrief(session)}</p>
-                            </button>
-
-                            <div className="grid min-w-[260px] gap-2 sm:grid-cols-2 md:max-w-[360px]">
-                              <div className="rounded-lg border border-[#ebe5d9] bg-white px-3 py-2">
-                                <p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#9b6a2f]">Attention</p>
-                                <p className="mt-1 text-xs font-semibold text-[#2c2924]">{candidatesNeedingWork(session)}</p>
-                              </div>
-                              <div className="rounded-lg border border-[#ebe5d9] bg-white px-3 py-2">
-                                <p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#9b6a2f]">Evidence</p>
-                                <p className="mt-1 text-xs font-semibold text-[#2c2924]">
-                                  {summary ? `${summary.p0_count} P0 / ${summary.reject_count} blocked` : "Waiting for resumes"}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-2 md:justify-end">
-                              <button
-                                onClick={() => router.push(`/sessions/${session.id}`)}
-                                className="inline-flex items-center gap-2 rounded-lg bg-[#151411] px-3 py-2 text-xs font-bold text-white transition hover:bg-[#2a2823]"
-                              >
-                                {status.action} <ArrowRight size={13} />
-                              </button>
-                              <button
-                                onClick={() => deleteRole(session)}
-                                disabled={deletingId === session.id}
-                                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[#ead7d2] text-red-500 transition hover:bg-red-50 disabled:opacity-50"
-                                title="Delete role"
-                              >
-                                {deletingId === session.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                              </button>
-                            </div>
-                          </div>
-                        </article>
-                      );
-                    })}
-                  </div>
-                )}
-              </section>
-
-              <aside className="grid gap-5 content-start">
-                <section className="rounded-2xl border border-[#ded8cc] bg-white p-5 shadow-sm">
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#ede7da] text-[#151411]"><Layers3 size={18} /></span>
-                    <div>
-                      <h2 className="text-sm font-black">Recruiter copilot loop</h2>
-                      <p className="text-xs text-[#777064]">The system improves after recruiter judgment.</p>
-                    </div>
-                  </div>
-                  <div className="mt-5 space-y-3">
-                    {[
-                      "Turn the JD into evidence-based criteria.",
-                      "Review a small calibration batch before trusting the model.",
-                      "Mark ideal resumes and explain disagreements.",
-                      "Run the final shortlist only after the rubric feels right.",
-                    ].map((item, index) => (
-                      <div key={item} className="flex gap-3 rounded-xl border border-[#ebe5d9] bg-[#fffdf8] p-3">
-                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#151411] text-[11px] font-bold text-white">{index + 1}</span>
-                        <p className="text-sm leading-5 text-[#4d473d]">{item}</p>
+      <section id="workflow" className="py-14 sm:py-16">
+        <div className="mi-shell">
+          <div className="grid gap-7 lg:grid-cols-[360px_minmax(0,1fr)]">
+            <div className="mi-reveal">
+              <p className="text-xs font-black uppercase text-[#bd641f]">Fewer steps. Clearer decisions.</p>
+              <h2 className="mt-3 text-3xl font-black sm:text-4xl">Make shortlisting calmer.</h2>
+              <p className="mt-3 text-sm leading-6 text-[#6f5c4c]">
+                The point is not to replace recruiter judgment. It is to remove the repetitive evidence work before judgment begins.
+              </p>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              {comparison.map(([title, ...steps]) => (
+                <div key={title} className={`mi-timeline-card mi-reveal rounded-[28px] border p-4 ${title.startsWith("Mieru") ? "border-[#24140f] bg-[#24140f] text-white" : "border-[#ead6bd] bg-white"}`}>
+                  <p className={`text-xs font-black uppercase ${title.startsWith("Mieru") ? "text-[#ffcc7a]" : "text-[#bd641f]"}`}>{title}</p>
+                  <div className="mt-4 grid gap-2">
+                    {steps.map((step, index) => (
+                      <div key={step} className={`mi-step-row flex items-center gap-3 rounded-2xl border px-3 py-2 ${title.startsWith("Mieru") ? "border-white/10 bg-white/[.06]" : "border-[#ead6bd] bg-[#fffaf0]"}`}>
+                        <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-black ${title.startsWith("Mieru") ? "bg-[#ffcc7a] text-[#24140f]" : "bg-[#24140f] text-white"}`}>{index + 1}</span>
+                        <span className="text-sm font-bold">{step}</span>
                       </div>
                     ))}
                   </div>
-                </section>
-
-                <section className="rounded-2xl border border-[#ded8cc] bg-[#2b261f] p-5 text-white shadow-sm">
-                  <div className="flex items-center gap-2 text-[#e6c78e]"><TriangleAlert size={15} /><p className="text-xs font-bold uppercase tracking-[.16em]">Design rule</p></div>
-                  <p className="mt-3 text-sm leading-6 text-[#f1eadf]">Nothing on this screen is decorative filler. If a card does not help a recruiter decide, calibrate, or unblock work, it does not belong here.</p>
-                </section>
-              </aside>
+                </div>
+              ))}
             </div>
           </div>
-        </section>
-      </div>
+        </div>
+      </section>
+
+      <section className="border-t border-[#ead6bd] bg-[#24140f] py-14 text-white sm:py-16">
+        <div className="mi-shell grid gap-8 lg:grid-cols-[minmax(0,1fr)_460px] lg:items-center">
+          <div className="mi-reveal">
+            <p className="text-xs font-black uppercase text-[#ffcc7a]">Join the beta</p>
+            <h2 className="mt-3 text-3xl font-black sm:text-4xl">Build a shortlist desk your recruiters can trust.</h2>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-[#f8ead5]">
+              Start with a workspace account, or leave your details and we will track interest against the Mieru backend.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link href="/signup" className="mi-button-shine inline-flex h-11 items-center gap-2 rounded-full bg-white px-5 text-sm font-black text-[#24140f] transition hover:bg-[#fff7e8]">
+                Create account <ArrowRight size={16} />
+              </Link>
+              <Link href="/login" className="inline-flex h-11 items-center rounded-full border border-white/20 px-5 text-sm font-bold text-white transition hover:bg-white/10">
+                Log in
+              </Link>
+            </div>
+          </div>
+          <LandingInterestForm />
+        </div>
+      </section>
     </main>
   );
 }

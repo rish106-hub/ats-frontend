@@ -7,10 +7,10 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "NextHire - Recruiter Shortlisting Workspace",
+  title: "Mieru - Evidence-visible Shortlisting",
   description:
-    "A recruiter workspace for role setup, calibration, evidence review, and shortlist decisions.",
-  keywords: ["ATS", "AI screening", "hiring", "resume screening", "structured evaluation"],
+    "A Japanese-inspired recruiter workspace for role calibration, resume evidence review, and shortlist decisions.",
+  keywords: ["recruiting", "AI screening", "hiring", "resume screening", "structured evaluation"],
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
