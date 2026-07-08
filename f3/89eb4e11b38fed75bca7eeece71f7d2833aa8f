@@ -1,0 +1,36 @@
+app/auth/callback/route.ts
+  s_e436aa558a4391::t_5ce51aafdb1f34 2,8
+lib/api.ts
+  s_e436aa558a4391::t_35897efa3a4538 251-254
+  s_e436aa558a4391::t_5ce51aafdb1f34 179-186,269-272
+  s_e436aa558a4391::t_e80a90bc8546c2 273-274
+lib/redirect.ts
+  s_e436aa558a4391::t_5ce51aafdb1f34 1-4,8-12
+  s_e436aa558a4391::t_ac8d08ec1c82ee 5-7
+components/landing-interest-form.tsx
+  s_e436aa558a4391::t_5ce51aafdb1f34 5,21-26
+README.md
+  s_e436aa558a4391::t_5ce51aafdb1f34 81-82
+components/auth-panel.tsx
+  s_e436aa558a4391::t_5ce51aafdb1f34 8,17
+app/auth/signout/route.ts
+  s_e436aa558a4391::t_5ce51aafdb1f34 7-12
+app/app/page.tsx
+  s_e436aa558a4391::t_5ce51aafdb1f34 110,112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f389eb4e11b38fed75bca7eeece71f7d2833aa8f",
+  "prompts": {},
+  "sessions": {
+    "s_e436aa558a4391": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f400e-bdcc-7522-8c05-5136b4d2a612",
+        "model": "gpt-5.5"
+      },
+      "human_author": "RISHAV DEWAN <rishavdewan10@gmail.com>"
+    }
+  }
+}
