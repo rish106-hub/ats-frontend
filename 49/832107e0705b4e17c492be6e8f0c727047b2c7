@@ -1,0 +1,36 @@
+app/sessions/[id]/page.tsx
+  s_4e190b306673f2::t_d3e34fa3e787b8 304-307,598,602
+  s_4e190b306673f2::t_ea95c716918025 261-269
+  s_4e190b306673f2::t_71218c4b423e08 156-166,472
+.env.example
+  s_5afbc3c45f6a2b::t_563ab3bcb7ade7 3-4,9
+lib/api.ts
+  s_4e190b306673f2::t_57744a46b5aa21 204-206,301-310
+  s_4e190b306673f2::t_b72a4ac78c8c0c 238-246
+lib/supabase/config.ts
+  s_5afbc3c45f6a2b::t_1ad6ab8ba1d547 3-4,13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "49832107e0705b4e17c492be6e8f0c727047b2c7",
+  "prompts": {},
+  "sessions": {
+    "s_4e190b306673f2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3b09-78a4-7c30-9ff0-e36802711696",
+        "model": "gpt-5.5"
+      },
+      "human_author": "RISHAV DEWAN <rishavdewan10@gmail.com>"
+    },
+    "s_5afbc3c45f6a2b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4044-2510-7003-80dd-5c12865c0c18",
+        "model": "gpt-5.5"
+      },
+      "human_author": "RISHAV DEWAN <rishavdewan10@gmail.com>"
+    }
+  }
+}
