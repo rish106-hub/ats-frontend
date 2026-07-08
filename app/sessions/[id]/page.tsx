@@ -153,6 +153,17 @@ function referralInsight(resume?: ResumeListItem) {
     : { found: false, label: "No referral signal", detail: "No referral marker was found in parsed resume data." };
 }
 
+function resumeStatusBadge(resume: ResumeListItem) {
+  const status = resume.extraction_status || "extraction_ready";
+  if (status === "uploaded") return { label: "Queued", className: "text-[#b54708]" };
+  if (status === "sarvam_extracting") return { label: "Extracting", className: "text-[#175cd3]" };
+  if (status === "needs_review") return { label: "Review", className: "text-[#b54708]" };
+  if (status === "failed") return { label: "Failed", className: "text-[#b42318]" };
+  if (status === "scoring") return { label: "Scoring", className: "text-[#175cd3]" };
+  if (status === "scored") return { label: "Scored", className: "text-[#027a48]" };
+  return { label: "Ready", className: "text-[#027a48]" };
+}
+
 export default function RoleWorkspace({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
@@ -247,7 +258,15 @@ export default function RoleWorkspace({ params }: { params: Promise<{ id: string
 
   function uploadResumes() {
     if (!files.length) return setError("Select at least one PDF resume.");
-    run(() => api.uploadResumes(id, files), { resumes: true });
+    run(async () => {
+      await api.uploadResumes(id, files);
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        const list = await refreshResumes();
+        const stillExtracting = list.some((resume) => ["uploaded", "sarvam_extracting"].includes(resume.extraction_status || ""));
+        if (!stillExtracting) break;
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+    }, { resumes: true });
   }
 
   function startCalibration() {
@@ -277,38 +296,15 @@ export default function RoleWorkspace({ params }: { params: Promise<{ id: string
   function reviewTeaching() {
     const payload = teachingPayload();
     if (!payload) return setError("Write the teaching instruction first.");
-    const lower = payload.toLowerCase();
-    const obviousTier1 = /tier\s*1|tier[- ]?one|top[- ]tier/.test(lower) && /india|indian/.test(lower) && /universit|college|institution|school/.test(lower);
-    if (teachingIntent !== "auto" || obviousTier1) {
-      const intentType = teachingIntent === "auto" && obviousTier1 ? "hard_filter" : teachingIntent;
-      setTeachingReview({
-        intent_type: intentType === "auto" ? "ambiguous" : intentType,
-        interpretation:
-          intentType === "hard_filter"
-            ? "I will treat this as a hard baseline gate. Candidates who do not satisfy it should be rejected or marked needs_review when evidence is unclear."
-            : intentType === "p0_signal"
-              ? "I will treat this as a reward signal. It should lift strong candidates after hard filters pass, but should not reject candidates by itself."
-              : intentType === "relax_filter"
-                ? "I will relax this requirement so candidates are not rejected only because they miss it."
-                : "I will treat this as a red flag for recruiter review, not an automatic rejection.",
-        will_do: [
-          intentType === "hard_filter"
-            ? `Add hard filter — ${instruction.trim()}`
-            : intentType === "p0_signal"
-              ? `Add P0 reward — ${instruction.trim()}`
-              : intentType === "relax_filter"
-                ? `Relax filter — ${instruction.trim()}`
-                : `Add red flag — ${instruction.trim()}`,
-        ],
-        confirmation_prompt: "I'll apply this teaching to the scoring rubric and prompt. Does that look right?",
-      });
-      return;
-    }
     run(() => api.interpretInstructions(id, payload).then((review) => setTeachingReview(review)));
   }
 
   function refine() {
     const payload = teachingPayload();
+    if (!teachingReview) {
+      setError("Review and confirm the teaching interpretation first.");
+      return;
+    }
     run(() => api.refinePreview(id, payload, [], undefined, false), { resumes: true }).then(() => {
       setInstruction("");
       setTeachingReview(null);
@@ -473,7 +469,7 @@ export default function RoleWorkspace({ params }: { params: Promise<{ id: string
                     {resumes.length === 0 ? <p className="text-sm text-[#777064]">No resumes parsed yet.</p> : resumes.map((resume) => (
                       <div key={resume.id} className="flex items-center justify-between gap-2 rounded-lg border border-[#ebe5d9] bg-white px-3 py-2">
                         <span className="truncate text-xs font-semibold">{resume.file_name}</span>
-                        <span className="text-[10px] font-bold uppercase tracking-[.12em] text-[#027a48]">Ready</span>
+                        <span className={`text-[10px] font-bold uppercase tracking-[.12em] ${resumeStatusBadge(resume).className}`}>{resumeStatusBadge(resume).label}</span>
                       </div>
                     ))}
                   </div>
@@ -599,11 +595,11 @@ export default function RoleWorkspace({ params }: { params: Promise<{ id: string
               </button>
               <button
                 onClick={refine}
-                disabled={busy || !instruction.trim() || !hasTeachingContext}
+                disabled={busy || !instruction.trim() || !hasTeachingContext || !teachingReview}
                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#151411] bg-[#151411] px-3 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {busy ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
-                {teachingReview ? "Confirm" : "Apply"}
+                Confirm
               </button>
             </div>
             {!hasTeachingContext && (
