@@ -90,7 +90,7 @@ function compactText(value?: string, max = 150) {
 }
 
 function OneLine({ text, className = "" }: { text: string; className?: string }) {
-  return <span title={text} className={`block min-w-0 truncate ${className}`}>{text}</span>;
+  return <span title={text} className={`block min-w-0 whitespace-normal break-words ${className}`}>{text}</span>;
 }
 
 function criterionLabel(value?: string) {
@@ -360,7 +360,7 @@ export default function RoleWorkspace({ params }: { params: Promise<{ id: string
             </button>
             <div className="min-w-0">
               <p className="text-[11px] font-bold uppercase tracking-[.18em] text-[#9b6a2f]">Hiring role cockpit</p>
-              <h1 className="truncate text-lg font-black tracking-tight">{roleName(session)}</h1>
+              <h1 className="break-words text-lg font-black leading-6 tracking-tight">{roleName(session)}</h1>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -409,7 +409,7 @@ export default function RoleWorkspace({ params }: { params: Promise<{ id: string
                       className={`w-full rounded-xl border p-3 text-left transition ${index === selectedIndex ? "border-[#151411] bg-[#f3ecdf]" : "border-[#ebe5d9] bg-white hover:border-[#cdbfaa]"}`}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <p className="line-clamp-1 text-sm font-black">{candidate.candidate_name || `Candidate ${index + 1}`}</p>
+                        <p className="min-w-0 break-words text-sm font-black leading-5">{candidate.candidate_name || `Candidate ${index + 1}`}</p>
                         <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ color: tone.color, background: tone.bg }}>{tone.label}</span>
                       </div>
                       <div className="mt-2 flex items-center gap-2 text-xs text-[#777064]">
@@ -467,8 +467,8 @@ export default function RoleWorkspace({ params }: { params: Promise<{ id: string
                   <p className="text-xs font-bold uppercase tracking-[.16em] text-[#9b6a2f]">Parsed evidence</p>
                   <div className="mt-4 space-y-2">
                     {resumes.length === 0 ? <p className="text-sm text-[#777064]">No resumes parsed yet.</p> : resumes.map((resume) => (
-                      <div key={resume.id} className="flex items-center justify-between gap-2 rounded-lg border border-[#ebe5d9] bg-white px-3 py-2">
-                        <span className="truncate text-xs font-semibold">{resume.file_name}</span>
+                      <div key={resume.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#ebe5d9] bg-white px-3 py-2">
+                        <span className="min-w-0 truncate text-xs font-semibold" title={resume.file_name}>{resume.file_name}</span>
                         <span className={`text-[10px] font-bold uppercase tracking-[.12em] ${resumeStatusBadge(resume).className}`}>{resumeStatusBadge(resume).label}</span>
                       </div>
                     ))}
@@ -579,7 +579,7 @@ export default function RoleWorkspace({ params }: { params: Promise<{ id: string
                 <p className="mt-2 text-xs leading-5">{teachingReview.interpretation}</p>
                 <div className="mt-2 space-y-1">
                   {teachingReview.will_do.map((item) => (
-                    <OneLine key={item} text={item} className="text-xs font-semibold" />
+                    <OneLine key={item} text={item} className="text-xs font-semibold leading-5" />
                   ))}
                 </div>
               </div>
@@ -645,7 +645,7 @@ function DeskCard({ title, icon: Icon, children, wide }: { title: string; icon: 
 function ReadinessRow({ label, done }: { label: string; done: boolean }) {
   return (
     <div className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-[#ebe5d9] bg-[#fffdf8] px-3 py-2">
-      <span className="min-w-0 truncate text-sm text-[#4d473d]">{label}</span>
+      <span className="min-w-0 break-words text-sm leading-5 text-[#4d473d]">{label}</span>
       {done ? <CheckCircle2 size={15} className="text-emerald-600" /> : <CircleDashed size={15} className="text-[#b7ad9d]" />}
     </div>
   );
@@ -656,7 +656,7 @@ function ActionButton({ onClick, disabled, icon: Icon, label, busy, secondary }:
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${secondary ? "border border-[#ded8cc] bg-white text-[#151411] hover:border-[#151411]" : "border border-[#151411] bg-[#151411] text-white hover:bg-[#2a2823]"}`}
+      className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-bold leading-5 transition disabled:cursor-not-allowed disabled:opacity-50 ${secondary ? "border border-[#ded8cc] bg-white text-[#151411] hover:border-[#151411]" : "border border-[#151411] bg-[#151411] text-white hover:bg-[#2a2823]"}`}
     >
       {busy ? <Loader2 size={15} className="animate-spin" /> : <Icon size={15} />}
       {label}
@@ -693,8 +693,8 @@ function CandidateReview({ candidate, tone, note, setNote, onAction, resume, ses
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0">
               <span className="rounded-full border px-2.5 py-1 text-[11px] font-bold" style={{ color: tone.color, background: tone.bg, borderColor: tone.border }}>{tone.label}</span>
-              <h3 className="mt-3 truncate text-2xl font-black tracking-tight">{candidate.candidate_name}</h3>
-              <OneLine text={compactText(candidate.reasoning, 140)} className="mt-2 max-w-3xl text-sm text-[#645d52]" />
+              <h3 className="mt-3 break-words text-2xl font-black leading-8 tracking-tight">{candidate.candidate_name}</h3>
+              <OneLine text={compactText(candidate.reasoning, 220)} className="mt-2 max-w-3xl text-sm leading-6 text-[#645d52]" />
             </div>
             <div className="grid grid-cols-2 gap-2 text-center">
               <Score label="Overall" value={candidate.overall_score} />
@@ -725,7 +725,7 @@ function CandidateReview({ candidate, tone, note, setNote, onAction, resume, ses
                 <button
                   key={template}
                   onClick={() => setNote(template)}
-                  className="rounded-full border border-[#ded8cc] bg-[#fffdf8] px-2.5 py-1 text-[11px] font-bold text-[#4d473d] hover:border-[#151411]"
+                  className="min-h-8 rounded-full border border-[#ded8cc] bg-[#fffdf8] px-2.5 py-1 text-[11px] font-bold leading-4 text-[#4d473d] hover:border-[#151411]"
                 >
                   {template}
                 </button>
@@ -776,7 +776,7 @@ function CandidateReview({ candidate, tone, note, setNote, onAction, resume, ses
               <p className="text-xs font-bold uppercase tracking-[.16em] text-[#9b6a2f]">Resume</p>
               <p className="mt-1 text-xs text-[#777064]">Open in a side panel without leaving review mode.</p>
             </div>
-            {resume && <span className="truncate text-[10px] font-semibold text-[#777064]">{resume.file_name}</span>}
+            {resume && <span className="min-w-0 truncate text-[10px] font-semibold text-[#777064]" title={resume.file_name}>{resume.file_name}</span>}
           </div>
           {resume ? (
             <button
@@ -789,7 +789,7 @@ function CandidateReview({ candidate, tone, note, setNote, onAction, resume, ses
           ) : <p className="mt-2 text-sm text-[#777064]">PDF link appears when the candidate maps to an uploaded file.</p>}
           <div className="mt-3 rounded-lg border px-3 py-2" style={{ color: referral.found ? "#027a48" : "#b54708", background: referral.found ? "#ecfdf3" : "#fffaeb", borderColor: referral.found ? "#abefc6" : "#fedf89" }}>
             <p className="text-xs font-black">{referral.label}</p>
-            <OneLine text={referral.detail} className="mt-1 text-xs" />
+            <OneLine text={referral.detail} className="mt-1 text-xs leading-5" />
           </div>
         </div>
       </div>
@@ -883,8 +883,8 @@ function ResumeSidePanel({ open, onClose, candidateName, fileName, resume, sessi
         <div className="flex items-start justify-between gap-4 border-b border-[#ded8cc] px-4 py-3">
           <div className="min-w-0">
             <p className="text-[11px] font-bold uppercase tracking-[.18em] text-[#9b6a2f]">Resume workspace</p>
-            <h3 className="mt-1 truncate text-base font-black">{candidateName}</h3>
-            <p className="truncate text-xs text-[#777064]">{fileName}</p>
+            <h3 className="mt-1 break-words text-base font-black leading-5">{candidateName}</h3>
+            <p className="break-all text-xs leading-5 text-[#777064]">{fileName}</p>
           </div>
           <button onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#ded8cc] bg-white text-[#151411] hover:border-[#151411]">
             <X size={15} />
@@ -904,12 +904,12 @@ function ResumeSidePanel({ open, onClose, candidateName, fileName, resume, sessi
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-[11px] font-black uppercase tracking-[.16em] text-[#9b6a2f]">Private note</p>
-                    <h4 className="mt-1 truncate text-base font-black text-[#151411]">Selection rationale</h4>
+                    <h4 className="mt-1 break-words text-base font-black leading-5 text-[#151411]">Selection rationale</h4>
                   </div>
                   <span className="shrink-0 rounded-full border border-[#d8c59f] bg-[#fffaf0] px-2 py-0.5 text-[10px] font-black text-[#7a5524]">Private</span>
                 </div>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-[#777064]">
-                  <OneLine text={`Candidate: ${candidateName}`} className="max-w-[210px]" />
+                  <OneLine text={`Candidate: ${candidateName}`} className="max-w-[210px] leading-5" />
                   <span className="font-semibold">{noteSavedAt ? `Saved ${noteSavedAt}` : "Not saved yet"}</span>
                 </div>
               </div>
@@ -919,7 +919,7 @@ function ResumeSidePanel({ open, onClose, candidateName, fileName, resume, sessi
                   onChange={(e) => savePrivateNote(e.target.value)}
                   rows={12}
                   placeholder={"Decision note\nWhy select:\nEvidence to verify:\nConcern:"}
-                  className="private-note-pad min-h-[280px] w-full resize-none rounded-xl border border-[#e0d2b6] px-4 py-3 text-sm leading-7 text-[#2c2924] outline-none placeholder:text-[#b09b74] focus:border-[#9b6a2f]"
+                  className="private-note-pad min-h-[280px] w-full resize-y rounded-xl border border-[#e0d2b6] px-4 py-3 text-sm leading-7 text-[#2c2924] outline-none placeholder:text-[#b09b74] focus:border-[#9b6a2f]"
                 />
                 <div className="mt-3 grid grid-cols-1 gap-2">
                   {[
@@ -945,7 +945,7 @@ function ResumeSidePanel({ open, onClose, candidateName, fileName, resume, sessi
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-black">Referral check</p>
-                  <OneLine text="Quick scan for referral markers in parsed resume data." className="mt-1 text-xs text-[#777064]" />
+                  <OneLine text="Quick scan for referral markers in parsed resume data." className="mt-1 text-xs leading-5 text-[#777064]" />
                 </div>
                 <button
                   onClick={() => setReferralOpen((value) => !value)}
@@ -957,12 +957,12 @@ function ResumeSidePanel({ open, onClose, candidateName, fileName, resume, sessi
               </div>
               <div className="mt-3 rounded-xl border px-3 py-3" style={{ color: referral.found ? "#027a48" : "#b54708", background: referral.found ? "#ecfdf3" : "#fffaeb", borderColor: referral.found ? "#abefc6" : "#fedf89" }}>
                 <p className="text-xs font-black">{referral.label}</p>
-                <OneLine text={referral.detail} className="mt-1 text-xs" />
+                <OneLine text={referral.detail} className="mt-1 text-xs leading-5" />
               </div>
               {referralOpen && (
                 <div className="mt-3 rounded-xl border border-[#ebe5d9] bg-[#fffdf8] p-3">
                   <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#9b6a2f]">How to use this</p>
-                  <OneLine text="Assistive check only. Confirm referrals from ATS metadata, employee email, or recruiter-entered source." className="mt-1 text-xs text-[#645d52]" />
+                  <OneLine text="Assistive check only. Confirm referrals from ATS metadata, employee email, or recruiter-entered source." className="mt-1 text-xs leading-5 text-[#645d52]" />
                 </div>
               )}
             </section>
@@ -981,10 +981,10 @@ function EvidenceRow({ item }: { item: CandidateResult["field_matches"][number] 
   const decision = evidenceDecisionNote(item.note, item.match);
   const line = `${requirement}: ${decision}; ${resumeSignal}.`;
   return (
-    <article className="grid min-w-0 grid-cols-[74px_62px_minmax(0,1fr)] items-center gap-2 rounded-xl border bg-[#fffdf8] px-3 py-2 sm:grid-cols-[88px_72px_minmax(0,1fr)]" style={{ borderColor: tone.border }}>
-      <OneLine text={field} className="text-[11px] font-black uppercase tracking-[.1em] text-[#9b6a2f]" />
+    <article className="grid min-w-0 gap-2 rounded-xl border bg-[#fffdf8] px-3 py-2 sm:grid-cols-[88px_72px_minmax(0,1fr)] sm:items-start" style={{ borderColor: tone.border }}>
+      <OneLine text={field} className="text-[11px] font-black uppercase leading-5 tracking-[.1em] text-[#9b6a2f]" />
       <span className="rounded-full border px-2 py-0.5 text-center text-[10px] font-black" style={{ color: tone.color, background: tone.bg, borderColor: tone.border }}>{tone.label}</span>
-      <OneLine text={line} className="text-sm font-medium text-[#4d473d]" />
+      <OneLine text={line} className="text-sm font-medium leading-6 text-[#4d473d]" />
     </article>
   );
 }
@@ -1066,7 +1066,7 @@ function RubricPanel({ jd, rubric }: { jd: JdAnalysis; rubric: any }) {
       {jd.one_liner && (
         <div className="rounded-xl border border-[#ebe5d9] bg-[#fffdf8] p-3">
           <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#9b6a2f]">Role lens</p>
-          <OneLine text={rubricRoleLens(jd.one_liner)} className="mt-1 text-sm text-[#4d473d]" />
+          <OneLine text={rubricRoleLens(jd.one_liner)} className="mt-1 text-sm leading-6 text-[#4d473d]" />
         </div>
       )}
       <RubricList title="Hard filters" items={hardChecks} icon={CheckCircle2} tone={matchTone("fail")} />
@@ -1100,9 +1100,9 @@ function RubricList({ title, items, icon: Icon, tone }: {
       </div>
       <div className="space-y-2">
         {items.length === 0 ? <p className="text-sm text-[#777064]">Waiting for rubric.</p> : items.map((item, index) => (
-          <div key={`${item.text}-${index}`} className="grid min-w-0 grid-cols-[minmax(0,1fr)_88px] items-center gap-2 rounded-lg border border-[#ebe5d9] bg-[#fffdf8] px-3 py-2">
-            <OneLine text={compactText(item.text, 105)} className="text-sm font-medium text-[#2c2924]" />
-            <span className="truncate rounded-full border border-[#ded8cc] bg-white px-2 py-0.5 text-center text-[10px] font-bold uppercase tracking-[.08em] text-[#9b6a2f]" title={item.meta}>{item.meta}</span>
+          <div key={`${item.text}-${index}`} className="grid min-w-0 gap-2 rounded-lg border border-[#ebe5d9] bg-[#fffdf8] px-3 py-2 sm:grid-cols-[minmax(0,1fr)_88px] sm:items-start">
+            <OneLine text={compactText(item.text, 140)} className="text-sm font-medium leading-6 text-[#2c2924]" />
+            <span className="rounded-full border border-[#ded8cc] bg-white px-2 py-0.5 text-center text-[10px] font-bold uppercase leading-4 tracking-[.08em] text-[#9b6a2f]" title={item.meta}>{item.meta}</span>
           </div>
         ))}
       </div>
@@ -1114,7 +1114,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="mt-3 flex items-center justify-between gap-3 border-t border-[#ebe5d9] pt-3 first:mt-0 first:border-t-0 first:pt-0">
       <span className="text-xs text-[#777064]">{label}</span>
-      <span className="text-right text-xs font-black text-[#151411]">{value}</span>
+      <span className="min-w-0 break-words text-right text-xs font-black leading-5 text-[#151411]">{value}</span>
     </div>
   );
 }

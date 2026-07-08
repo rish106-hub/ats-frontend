@@ -89,8 +89,8 @@ export function ResumeDrawer({ open, onClose, sessionId, fileName, candidate, re
         {/* Header */}
         <div className="flex items-start justify-between px-5 py-4" style={{ borderBottom: "1px solid rgba(96,165,250,0.1)" }}>
           <div className="min-w-0 space-y-2 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="font-bold text-white text-base truncate">{candidate.candidate_name || fileName}</h2>
+            <div className="flex flex-wrap items-start gap-2">
+              <h2 className="min-w-0 break-words text-base font-bold leading-5 text-white">{candidate.candidate_name || fileName}</h2>
               <span
                 className={`text-xs px-2.5 py-0.5 rounded-full font-semibold shrink-0 flex items-center gap-1.5 border ${clsBadge.cls}`}
                 style={{ background: clsBadge.bg }}
@@ -126,13 +126,13 @@ export function ResumeDrawer({ open, onClose, sessionId, fileName, candidate, re
               type="button"
               disabled={!pdfBlobUrl}
               onClick={() => pdfBlobUrl && window.open(pdfBlobUrl, "_blank", "noopener,noreferrer")}
-              className="nh-btn-ghost flex items-center gap-1.5 text-xs px-3 py-1.5"
+              className="nh-btn-ghost flex min-h-8 items-center gap-1.5 px-3 py-1.5 text-xs"
             >
               <ExternalLink size={13} /> Open PDF
             </button>
             <button
               onClick={onClose}
-              className="nh-btn-ghost w-8 h-8 flex items-center justify-center text-sm"
+              className="nh-btn-ghost flex h-8 w-8 items-center justify-center text-sm"
             >
               <X size={13} />
             </button>
@@ -249,12 +249,12 @@ export function ResumeDrawer({ open, onClose, sessionId, fileName, candidate, re
                     return (
                       <div key={i} className="border-l-2 rounded-r-lg px-3 py-2"
                         style={{ borderLeftColor: style.borderColor, background: style.bg }}>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[10px] font-mono font-semibold uppercase text-[#c8d8f0] px-1.5 py-0.5 rounded"
+                        <div className="flex flex-wrap items-start gap-2">
+                          <span className="break-words rounded px-1.5 py-0.5 text-[10px] font-mono font-semibold uppercase leading-4 text-[#c8d8f0]"
                             style={{ background: "rgba(96,165,250,0.08)", border: "1px solid rgba(96,165,250,0.15)" }}>
                             {String(fm.field)}
                           </span>
-                          <span className={`text-[11px] font-bold ${style.cls}`}>{style.icon} {match}</span>
+                          <span className={`text-[11px] font-bold leading-4 ${style.cls}`}>{style.icon} {match}</span>
                         </div>
                         {fm.note && (
                           <p className={`text-[11px] mt-1 leading-relaxed italic ${style.cls} opacity-75`}>

@@ -119,7 +119,7 @@ function DeskSignal({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 rounded-lg border border-white/10 bg-white/[.06] px-3 py-2">
       <p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#c7b18b]">{label}</p>
-      <p className="mt-1 truncate text-sm font-black text-white" title={value}>{value}</p>
+      <p className="mt-1 break-words text-sm font-black leading-5 text-white" title={value}>{value}</p>
     </div>
   );
 }
@@ -212,7 +212,7 @@ export default function HomePage() {
             <button
               onClick={createRole}
               disabled={creating}
-              className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#151411] px-3 text-xs font-semibold text-white transition hover:bg-[#2a2823] disabled:opacity-60 lg:mt-8 lg:w-full lg:justify-center"
+              className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-[#151411] px-3 py-2 text-xs font-semibold leading-4 text-white transition hover:bg-[#2a2823] disabled:opacity-60 lg:mt-8 lg:w-full lg:justify-center"
             >
               {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
               New role
@@ -255,7 +255,7 @@ export default function HomePage() {
                 <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
                   <div className="min-w-0">
                     <p className="text-xs font-bold uppercase tracking-[.18em] text-[#c7b18b]">Recruiter command center</p>
-                    <h1 className="mt-2 truncate text-2xl font-black tracking-tight sm:text-3xl">
+                    <h1 className="mt-2 break-words text-2xl font-black leading-8 tracking-tight sm:text-3xl sm:leading-9">
                       Today's hiring desk
                     </h1>
                     <p className="mt-2 max-w-2xl text-sm leading-5 text-[#d6d0c5]">
@@ -271,12 +271,12 @@ export default function HomePage() {
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
                         <p className="text-[11px] font-bold uppercase tracking-[.16em] text-[#c7b18b]">Recruiter scratchpad</p>
-                        <p className="mt-1 truncate text-xs text-[#d6d0c5]">Role context, hiring manager notes, or must-check criteria.</p>
+                        <p className="mt-1 break-words text-xs leading-5 text-[#d6d0c5]">Role context, hiring manager notes, or must-check criteria.</p>
                       </div>
                       <button
                         onClick={() => focusRole ? router.push(`/sessions/${focusRole.id}`) : createRole()}
                         disabled={creating}
-                        className="shrink-0 rounded-lg bg-white px-3 py-2 text-xs font-black text-[#151411] disabled:opacity-60"
+                        className="min-h-9 shrink-0 rounded-lg bg-white px-3 py-2 text-xs font-black leading-4 text-[#151411] disabled:opacity-60"
                       >
                         {focusStatus?.action || "New role"}
                       </button>
@@ -286,7 +286,7 @@ export default function HomePage() {
                       onChange={(e) => updateDeskNote(e.target.value)}
                       rows={3}
                       placeholder="Example: prioritize PM ownership, consumer launch proof, and stakeholder evidence."
-                      className="mt-3 w-full resize-none rounded-lg border border-white/15 bg-white/[.08] px-3 py-2 text-sm text-white placeholder:text-[#a9a296] focus:border-white/40 focus:outline-none"
+                      className="mt-3 w-full resize-y rounded-lg border border-white/15 bg-white/[.08] px-3 py-2 text-sm leading-6 text-white placeholder:text-[#a9a296] focus:border-white/40 focus:outline-none"
                     />
                   </div>
                 </div>
@@ -302,7 +302,7 @@ export default function HomePage() {
                       <div className="min-w-0">
                         <div className="flex items-baseline gap-2">
                           <p className="text-2xl font-black leading-none">{item.value}</p>
-                          <p className="truncate text-xs font-semibold text-[#5f584e]">{item.label}</p>
+                          <p className="break-words text-xs font-semibold leading-5 text-[#5f584e]">{item.label}</p>
                         </div>
                         <p className="mt-1 text-xs leading-5 text-[#777064]">{item.copy}</p>
                       </div>
@@ -329,7 +329,7 @@ export default function HomePage() {
                   <button
                     onClick={createRole}
                     disabled={creating}
-                    className="inline-flex items-center gap-2 rounded-lg border border-[#151411] bg-[#151411] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#2a2823] disabled:opacity-60"
+                    className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-[#151411] bg-[#151411] px-3 py-2 text-xs font-semibold leading-4 text-white transition hover:bg-[#2a2823] disabled:opacity-60"
                   >
                     {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
                     Create role
@@ -346,7 +346,7 @@ export default function HomePage() {
                       <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[#ede7da] text-[#151411]"><BriefcaseBusiness size={21} /></div>
                       <h3 className="mt-4 text-lg font-black">Create your first hiring role</h3>
                       <p className="mt-2 text-sm leading-6 text-[#777064]">Start with a JD. The workspace will guide you through resumes, calibration, and the final shortlist.</p>
-                      <button onClick={createRole} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#151411] px-4 py-2 text-sm font-semibold text-white">
+                      <button onClick={createRole} className="mt-5 inline-flex min-h-10 items-center gap-2 rounded-lg bg-[#151411] px-4 py-2 text-sm font-semibold leading-5 text-white">
                         <Plus size={15} /> New role
                       </button>
                     </div>
@@ -370,11 +370,11 @@ export default function HomePage() {
                                 <span className="text-xs text-[#8b8376]">Created {date}</span>
                                 {session.preview_iteration_count > 0 && <span className="text-xs text-[#8b8376]">{session.preview_iteration_count} calibration pass{session.preview_iteration_count > 1 ? "es" : ""}</span>}
                               </div>
-                              <h3 className="mt-3 truncate text-lg font-black tracking-tight">{roleName(session)}</h3>
-                              <p className="mt-1 line-clamp-2 max-w-3xl text-sm leading-6 text-[#645d52]">{roleBrief(session)}</p>
+                              <h3 className="mt-3 break-words text-lg font-black leading-6 tracking-tight">{roleName(session)}</h3>
+                              <p className="mt-1 max-w-3xl break-words text-sm leading-6 text-[#645d52]">{roleBrief(session)}</p>
                             </button>
 
-                            <div className="grid min-w-[260px] gap-2 sm:grid-cols-2 md:max-w-[360px]">
+                            <div className="grid w-full gap-2 sm:grid-cols-2 md:max-w-[360px]">
                               <div className="rounded-lg border border-[#ebe5d9] bg-white px-3 py-2">
                                 <p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#9b6a2f]">Attention</p>
                                 <p className="mt-1 text-xs font-semibold text-[#2c2924]">{candidatesNeedingWork(session)}</p>
@@ -390,7 +390,7 @@ export default function HomePage() {
                             <div className="flex items-center gap-2 md:justify-end">
                               <button
                                 onClick={() => router.push(`/sessions/${session.id}`)}
-                                className="inline-flex items-center gap-2 rounded-lg bg-[#151411] px-3 py-2 text-xs font-bold text-white transition hover:bg-[#2a2823]"
+                                className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-[#151411] px-3 py-2 text-xs font-bold leading-4 text-white transition hover:bg-[#2a2823]"
                               >
                                 {status.action} <ArrowRight size={13} />
                               </button>

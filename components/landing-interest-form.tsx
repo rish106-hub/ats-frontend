@@ -44,23 +44,23 @@ export function LandingInterestForm() {
         value={email}
         onChange={(event) => setEmail(event.target.value)}
         placeholder="Work email"
-        className="h-11 rounded-lg border border-[#d8d1c3] bg-white px-3 text-sm outline-none focus:border-[#151411]"
+        className="min-h-11 rounded-lg border border-[#d8d1c3] bg-white px-3 py-2 text-sm leading-5 outline-none focus:border-[#151411]"
       />
       <input
         value={company}
         onChange={(event) => setCompany(event.target.value)}
         placeholder="Company"
-        className="h-11 rounded-lg border border-[#d8d1c3] bg-white px-3 text-sm outline-none focus:border-[#151411]"
+        className="min-h-11 rounded-lg border border-[#d8d1c3] bg-white px-3 py-2 text-sm leading-5 outline-none focus:border-[#151411]"
       />
       <input
         value={role}
         onChange={(event) => setRole(event.target.value)}
         placeholder="Your role"
-        className="h-11 rounded-lg border border-[#d8d1c3] bg-white px-3 text-sm outline-none focus:border-[#151411]"
+        className="min-h-11 rounded-lg border border-[#d8d1c3] bg-white px-3 py-2 text-sm leading-5 outline-none focus:border-[#151411]"
       />
       <button
         disabled={loading}
-        className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#151411] px-4 text-sm font-black text-white transition hover:bg-[#2a2823] disabled:opacity-60 sm:col-span-2"
+        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#151411] px-4 py-2 text-sm font-black leading-5 text-white transition hover:bg-[#2a2823] disabled:opacity-60 sm:col-span-2"
       >
         {loading ? <Loader2 size={15} className="animate-spin" /> : null}
         Join beta
