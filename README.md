@@ -1,8 +1,8 @@
-# ATS Prompt Lab — Frontend
+# Mieru — Recruiter Workspace
 
-> AI-powered resume shortlisting with iterative criteria refinement and field-level scoring.
+> Evidence-first resume shortlisting with role calibration, rubric teaching, recruiter notes, and grounded candidate scoring.
 
-The frontend is a Next.js 16 (App Router) application that drives a multi-step recruiter workflow: paste a job description → upload resumes → run preview evaluations → refine criteria in natural language → accept and run a full evaluation on every candidate.
+The frontend is a Next.js 16 (App Router) application that drives a multi-step recruiter workflow: authenticate with Supabase, complete company onboarding, paste a job description, upload resumes, run preview evaluations, refine criteria in natural language, and accept a final shortlist run.
 
 ---
 
@@ -101,11 +101,15 @@ Open [http://localhost:3000](http://localhost:3000). The backend must be reachab
 | Variable | Default | Description |
 |---|---|---|
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | Base URL of the FastAPI backend |
+| `NEXT_PUBLIC_SUPABASE_URL` | — | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | — | Supabase anon or publishable key |
 
 Create a `.env.local` file (never commit it):
 
 ```bash
 NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-publishable-or-anon-key
 ```
 
 For production, set this to your deployed backend URL (e.g. Railway, Render, etc.).
@@ -157,7 +161,7 @@ Typed thin wrapper around `fetch`. All types (`Session`, `CandidateResult`, `JdA
 
 ## API Layer
 
-The client communicates with one backend service. All calls are authenticated with an optional Anthropic API key passed per-request (stored only in component state, never persisted client-side).
+The client communicates with one backend service. Portal calls attach the Supabase access token so roles, resumes, notes, and onboarding data are scoped to the authenticated workspace.
 
 Key endpoints consumed:
 

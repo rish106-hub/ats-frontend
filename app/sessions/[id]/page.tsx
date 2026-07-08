@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { Textarea } from "@/components/ui/textarea";
 import {
   api,
-  BASE,
   type CandidateFeedback,
   type CandidateResult,
   type InterpretResponse,
@@ -36,7 +35,6 @@ import {
   RefreshCcw,
   Search,
   ShieldAlert,
-  Sparkles,
   Star,
   Upload,
   X,
@@ -175,11 +173,16 @@ export default function RoleWorkspace({ params }: { params: Promise<{ id: string
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
 
   const refresh = useCallback(async () => {
+    const me = await api.me();
+    if (!me.onboarding_completed) {
+      router.replace("/onboarding");
+      return;
+    }
     const next = await api.getSession(id);
     setSession(next);
     if (next.jd_text) setJdText(next.jd_text);
     return next;
-  }, [id]);
+  }, [id, router]);
 
   const refreshResumes = useCallback(async () => {
     const list = await api.listResumes(id);
@@ -345,7 +348,7 @@ export default function RoleWorkspace({ params }: { params: Promise<{ id: string
       <main className="grid min-h-screen place-items-center bg-[#f5f2ea] text-[#151411]">
         <div className="rounded-2xl border border-[#ded8cc] bg-white p-6 text-center shadow-sm">
           <p className="font-bold">Role not found.</p>
-          <button onClick={() => router.push("/")} className="mt-4 rounded-lg bg-[#151411] px-4 py-2 text-sm font-semibold text-white">Back to desk</button>
+          <button onClick={() => router.push("/app")} className="mt-4 rounded-lg bg-[#151411] px-4 py-2 text-sm font-semibold text-white">Back to desk</button>
         </div>
       </main>
     );
@@ -356,7 +359,7 @@ export default function RoleWorkspace({ params }: { params: Promise<{ id: string
       <header className="sticky top-0 z-40 border-b border-[#ded8cc] bg-[#f9f7f1]/95 backdrop-blur">
         <div className="flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between lg:px-6">
           <div className="flex min-w-0 items-center gap-3">
-            <button onClick={() => router.push("/")} className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#ded8cc] bg-white text-[#151411]">
+            <button onClick={() => router.push("/app")} className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#ded8cc] bg-white text-[#151411]">
               <ArrowLeft size={16} />
             </button>
             <div className="min-w-0">
@@ -513,7 +516,7 @@ export default function RoleWorkspace({ params }: { params: Promise<{ id: string
               {step === "calibration" && <ActionButton onClick={loadMoreCalibration} disabled={busy} icon={RefreshCcw} label="Add 2 more resumes" secondary />}
               {step === "calibration" && <ActionButton onClick={finalRun} disabled={busy} icon={BadgeCheck} label="Run final shortlist" />}
               {step === "resumes" && resumes.length > 0 && <ActionButton onClick={startCalibration} disabled={busy} icon={Play} label="Start calibration" />}
-              {step === "results" && <ActionButton onClick={() => router.push("/")} icon={ArrowRight} label="Back to hiring desk" secondary />}
+              {step === "results" && <ActionButton onClick={() => router.push("/app")} icon={ArrowRight} label="Back to hiring desk" secondary />}
               {busy && <p className="text-xs text-[#777064]">Working through the model call. Keep this page open for live feedback.</p>}
             </div>
           </DeskCard>
@@ -599,7 +602,7 @@ export default function RoleWorkspace({ params }: { params: Promise<{ id: string
                 disabled={busy || !instruction.trim() || !hasTeachingContext}
                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#151411] bg-[#151411] px-3 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {busy ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+                {busy ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
                 {teachingReview ? "Confirm" : "Apply"}
               </button>
             </div>
@@ -675,7 +678,6 @@ function CandidateReview({ candidate, tone, note, setNote, onAction, resume, ses
   sessionId: string;
 }) {
   const evidence = candidate.field_matches || [];
-  const pdfUrl = resume ? `${BASE}/api/sessions/${sessionId}/resumes/${encodeURIComponent(resume.file_name)}/pdf` : "";
   const baseTone = baselineTone(candidate.baseline_pass);
   const [pdfOpen, setPdfOpen] = useState(false);
   const referral = referralInsight(resume);
@@ -801,7 +803,6 @@ function CandidateReview({ candidate, tone, note, setNote, onAction, resume, ses
           onClose={() => setPdfOpen(false)}
           candidateName={candidate.candidate_name}
           fileName={resume.file_name}
-          pdfUrl={pdfUrl}
           resume={resume}
           sessionId={sessionId}
         />
@@ -818,20 +819,21 @@ function StatusChip({ label, tone }: { label: string; tone: { color: string; bg:
   );
 }
 
-function ResumeSidePanel({ open, onClose, candidateName, fileName, pdfUrl, resume, sessionId }: {
+function ResumeSidePanel({ open, onClose, candidateName, fileName, resume, sessionId }: {
   open: boolean;
   onClose: () => void;
   candidateName: string;
   fileName: string;
-  pdfUrl: string;
   resume: ResumeListItem;
   sessionId: string;
 }) {
-  const noteKey = `nexthire:private-note:${sessionId}:${fileName}`;
+  const noteKey = `mieru:private-note:${sessionId}:${fileName}`;
   const noteSavedKey = `${noteKey}:saved-at`;
   const [privateNote, setPrivateNote] = useState("");
   const [noteSavedAt, setNoteSavedAt] = useState("");
   const [referralOpen, setReferralOpen] = useState(false);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState("");
+  const [pdfError, setPdfError] = useState("");
   const referral = referralInsight(resume);
 
   useEffect(() => {
@@ -839,6 +841,30 @@ function ResumeSidePanel({ open, onClose, candidateName, fileName, pdfUrl, resum
     setPrivateNote(window.localStorage.getItem(noteKey) || "");
     setNoteSavedAt(window.localStorage.getItem(noteSavedKey) || "");
   }, [noteKey, noteSavedKey, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    let objectUrl = "";
+    setPdfBlobUrl("");
+    setPdfError("");
+    api.resumePdfBlobUrl(sessionId, fileName)
+      .then((url) => {
+        if (cancelled) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        objectUrl = url;
+        setPdfBlobUrl(url);
+      })
+      .catch((err) => {
+        if (!cancelled) setPdfError((err as Error).message || "Unable to load resume PDF.");
+      });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [fileName, open, sessionId]);
 
   function savePrivateNote(value: string) {
     const timestamp = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
@@ -869,7 +895,13 @@ function ResumeSidePanel({ open, onClose, candidateName, fileName, pdfUrl, resum
           </button>
         </div>
         <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_360px]">
-          <iframe title={`${candidateName} resume PDF`} src={pdfUrl} className="h-full min-h-[65vh] w-full bg-white lg:min-h-0" />
+          {pdfBlobUrl ? (
+            <iframe title={`${candidateName} resume PDF`} src={pdfBlobUrl} className="h-full min-h-[65vh] w-full bg-white lg:min-h-0" />
+          ) : (
+            <div className="flex min-h-[65vh] items-center justify-center bg-white p-6 text-center text-sm text-[#645d52] lg:min-h-0">
+              {pdfError || "Loading resume PDF..."}
+            </div>
+          )}
           <aside className="overflow-y-auto border-t border-[#ded8cc] bg-[#fffdf8] p-4 lg:border-l lg:border-t-0">
             <section className="overflow-hidden rounded-2xl border border-[#ded8cc] bg-[#fffdf8] shadow-sm">
               <div className="border-b border-[#e5dccb] bg-[#fbf4df] px-4 py-3">

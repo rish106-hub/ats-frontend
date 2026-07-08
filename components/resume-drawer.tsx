@@ -1,10 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { ExternalLink, X, XCircle, Check } from "lucide-react";
-import { type CandidateResult, type ResumeLens } from "@/lib/api";
-
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { api, type CandidateResult, type ResumeLens } from "@/lib/api";
 
 const LENS_FIELDS: { key: keyof ResumeLens; label: string }[] = [
   { key: "ownership_arc",      label: "Ownership Arc"      },
@@ -26,6 +24,9 @@ interface ResumeDrawerProps {
 }
 
 export function ResumeDrawer({ open, onClose, sessionId, fileName, candidate, resumeLens }: ResumeDrawerProps) {
+  const [pdfBlobUrl, setPdfBlobUrl] = useState("");
+  const [pdfError, setPdfError] = useState("");
+
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -33,9 +34,32 @@ export function ResumeDrawer({ open, onClose, sessionId, fileName, candidate, re
     return () => window.removeEventListener("keydown", handler);
   }, [open, onClose]);
 
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    let objectUrl = "";
+    setPdfBlobUrl("");
+    setPdfError("");
+    api.resumePdfBlobUrl(sessionId, fileName)
+      .then((url) => {
+        if (cancelled) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        objectUrl = url;
+        setPdfBlobUrl(url);
+      })
+      .catch((err) => {
+        if (!cancelled) setPdfError((err as Error).message || "Unable to load resume PDF.");
+      });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [fileName, open, sessionId]);
+
   if (!open) return null;
 
-  const pdfUrl = `${BASE}/api/sessions/${sessionId}/resumes/${encodeURIComponent(fileName)}/pdf`;
   const cls = candidate.classification;
 
   const clsBadge =
@@ -98,14 +122,14 @@ export function ResumeDrawer({ open, onClose, sessionId, fileName, candidate, re
           </div>
 
           <div className="flex items-center gap-2 ml-3 shrink-0">
-            <a
-              href={pdfUrl}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
+              disabled={!pdfBlobUrl}
+              onClick={() => pdfBlobUrl && window.open(pdfBlobUrl, "_blank", "noopener,noreferrer")}
               className="nh-btn-ghost flex items-center gap-1.5 text-xs px-3 py-1.5"
             >
               <ExternalLink size={13} /> Open PDF
-            </a>
+            </button>
             <button
               onClick={onClose}
               className="nh-btn-ghost w-8 h-8 flex items-center justify-center text-sm"
@@ -120,11 +144,17 @@ export function ResumeDrawer({ open, onClose, sessionId, fileName, candidate, re
 
           {/* PDF embed */}
           <div style={{ borderBottom: "1px solid rgba(96,165,250,0.07)" }}>
-            <iframe
-              src={pdfUrl}
-              className="w-full h-96"
-              title={`Resume: ${fileName}`}
-            />
+            {pdfBlobUrl ? (
+              <iframe
+                src={pdfBlobUrl}
+                className="w-full h-96"
+                title={`Resume: ${fileName}`}
+              />
+            ) : (
+              <div className="flex h-96 items-center justify-center p-6 text-center text-sm text-[#8ea2c5]">
+                {pdfError || "Loading resume PDF..."}
+              </div>
+            )}
           </div>
 
           <div className="p-5 space-y-5">
