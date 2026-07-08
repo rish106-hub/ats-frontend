@@ -1,0 +1,38 @@
+app/sessions/[id]/page.tsx
+  s_10dc1252acfb68::t_2662137aa75168 93,363,412,470-471,582,648,659,696-697,728,779,792,886-887,907,912,922,948,960,965,984-985,987,1069,1103-1105,1117
+components/field-match-table.tsx
+  s_10dc1252acfb68::t_eb3572fb485110 83,86,89,98,109-110,115-116,121-122,194,206,231,241,289,291,297,445
+  s_10dc1252acfb68::t_6d043ca939f3dd 99
+components/resume-drawer.tsx
+  s_10dc1252acfb68::t_1bc9e12941f659 92-93,129,135,252-253,257
+app/app/page.tsx
+  s_10dc1252acfb68::t_6667421635b24c 122
+  s_10dc1252acfb68::t_7eba30797a767c 215,258,274,279,289,305,332,349,373-374,377,393
+app/page.tsx
+  s_10dc1252acfb68::t_c18dea14931db4 140,301,384
+  s_10dc1252acfb68::t_edba3e31996b2b 119,122,143,169,180,249-250,252,261-262,264,387
+  s_10dc1252acfb68::t_6d043ca939f3dd 133
+app/globals.css
+  s_10dc1252acfb68::t_703a7734baa19c 476,480
+components/auth-panel.tsx
+  s_10dc1252acfb68::t_6d043ca939f3dd 130,139,152,164
+  s_10dc1252acfb68::t_f46fcea670cfe8 175
+components/landing-interest-form.tsx
+  s_10dc1252acfb68::t_f46fcea670cfe8 47,53,59,63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "01362569cef504da01ad29f8e34f6bc9ec9b4486",
+  "prompts": {},
+  "sessions": {
+    "s_10dc1252acfb68": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4015-048d-7472-b8f6-c734f71d9566",
+        "model": "gpt-5.5"
+      },
+      "human_author": "RISHAV DEWAN <rishavdewan10@gmail.com>"
+    }
+  }
+}
