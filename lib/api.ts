@@ -201,6 +201,9 @@ export interface ResumeListItem {
   keyword_score: number;
   resume_lens?: ResumeLens | null;
   is_exemplar: boolean;
+  extraction_status?: "uploaded" | "sarvam_extracting" | "extraction_ready" | "scoring" | "scored" | "needs_review" | "failed";
+  extraction_provider?: string | null;
+  extraction_error?: string | null;
 }
 
 export interface Session {
@@ -232,10 +235,15 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   Object.entries(dynamicAuthHeaders).forEach(([key, value]) => headers.set(key, value));
-  const res = await fetch(`${BASE}${path}`, {
-    ...init,
-    headers,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      ...init,
+      headers,
+    });
+  } catch {
+    throw new Error(`Could not reach backend at ${BASE}. Make sure FastAPI is running on port 8000, then refresh this page.`);
+  }
   if (!res.ok) {
     const err = await res.json().catch(async () => ({ detail: (await res.text().catch(() => "")) || res.statusText }));
     let msg = "Request failed";
@@ -290,11 +298,16 @@ export const api = {
     files.forEach((f) => form.append("files", f));
     if (apiKey) form.append("api_key", apiKey);
     const dynamicAuthHeaders = await authHeaders();
-    return fetch(`${BASE}/api/sessions/${id}/resumes`, {
-      method: "POST",
-      headers: dynamicAuthHeaders,
-      body: form,
-    }).then(async (r) => {
+    let r: Response;
+    try {
+      r = await fetch(`${BASE}/api/sessions/${id}/resumes`, {
+        method: "POST",
+        headers: dynamicAuthHeaders,
+        body: form,
+      });
+    } catch (error) {
+      throw new Error(`Could not reach backend at ${BASE}. Check that the backend is running on port 8000 and refresh the page.`);
+    }
       if (!r.ok) {
         const err = await r.json().catch(() => ({ detail: r.statusText }));
         let msg = "Upload failed";
@@ -304,7 +317,6 @@ export const api = {
         throw new Error(msg);
       }
       return r.json() as Promise<Session>;
-    });
   },
 
   startPreview: (id: string, apiKey?: string) =>
